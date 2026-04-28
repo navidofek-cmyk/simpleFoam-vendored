@@ -1,0 +1,19 @@
+FROM ubuntu:22.04
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates curl gnupg lsb-release \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /usr/share/keyrings \
+    && curl -fsSL https://dl.openfoam.org/gpg.key \
+       | gpg --dearmor -o /usr/share/keyrings/openfoam.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/openfoam.gpg] \
+http://dl.openfoam.org/ubuntu $(lsb_release -cs) main" \
+       > /etc/apt/sources.list.d/openfoam.list
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openfoam10 build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+SHELL ["/bin/bash", "-lc"]

@@ -4,28 +4,34 @@
 # 2. For each OF header, copies it plus the matching .C implementation.
 # 3. Recreates the lnInclude flat-include dirs so #include "Foo.H" still works.
 # Output: /out/vendor/  (bind-mounted from host)
-set -euo pipefail
+set -eo pipefail
 
 OF_ROOT="${WM_PROJECT_DIR:-/opt/openfoam10}"
 SOLVER_DIR="/work/solver"
 OUT_DIR="/out/vendor"
 
+# OF bashrc has internal commands that return non-zero — disable -eu around it
+set +eu
+# shellcheck disable=SC1091
 source "${OF_ROOT}/etc/bashrc"
+set -eu
 
+SRC="${FOAM_SRC}"
 echo "[1] Resolving header dependencies with g++ -MM ..."
+echo "    FOAM_SRC=${SRC}"
 INCLUDES=(
     -I"${SOLVER_DIR}"
-    -I"${LIB_SRC}/OpenFOAM/lnInclude"
-    -I"${LIB_SRC}/OSspecific/POSIX/lnInclude"
-    -I"${LIB_SRC}/finiteVolume/lnInclude"
-    -I"${LIB_SRC}/meshTools/lnInclude"
-    -I"${LIB_SRC}/physicalProperties/lnInclude"
-    -I"${LIB_SRC}/MomentumTransportModels/momentumTransportModels/lnInclude"
-    -I"${LIB_SRC}/MomentumTransportModels/incompressible/lnInclude"
-    -I"${LIB_SRC}/sampling/lnInclude"
-    -I"${LIB_SRC}/fvModels/lnInclude"
-    -I"${LIB_SRC}/fvConstraints/lnInclude"
-    -I"${LIB_SRC}/finiteVolume/cfdTools/general/include"
+    -I"${SRC}/OpenFOAM/lnInclude"
+    -I"${SRC}/OSspecific/POSIX/lnInclude"
+    -I"${SRC}/finiteVolume/lnInclude"
+    -I"${SRC}/meshTools/lnInclude"
+    -I"${SRC}/physicalProperties/lnInclude"
+    -I"${SRC}/MomentumTransportModels/momentumTransportModels/lnInclude"
+    -I"${SRC}/MomentumTransportModels/incompressible/lnInclude"
+    -I"${SRC}/sampling/lnInclude"
+    -I"${SRC}/fvModels/lnInclude"
+    -I"${SRC}/fvConstraints/lnInclude"
+    -I"${SRC}/finiteVolume/cfdTools/general/include"
     -DWM_DP -DWM_LABEL_SIZE=32
 )
 
@@ -44,7 +50,7 @@ COPIED_H=0
 COPIED_C=0
 
 while IFS= read -r hdr; do
-    rel="${hdr#${OF_ROOT}/src/}"
+    rel="${hdr#${SRC}/}"
     dst="${OUT_DIR}/src/${rel}"
     mkdir -p "$(dirname "${dst}")"
     cp -n "${hdr}" "${dst}" 2>/dev/null && (( COPIED_H++ )) || true
@@ -52,7 +58,7 @@ while IFS= read -r hdr; do
     # Matching implementation: same path, .H -> .C
     impl="${hdr%.H}.C"
     if [[ -f "${impl}" ]]; then
-        dst_c="${OUT_DIR}/src/${impl#${OF_ROOT}/src/}"
+        dst_c="${OUT_DIR}/src/${impl#${SRC}/}"
         mkdir -p "$(dirname "${dst_c}")"
         cp -n "${impl}" "${dst_c}" 2>/dev/null && (( COPIED_C++ )) || true
     fi
@@ -65,14 +71,14 @@ echo "[3] Recreating lnInclude flat dirs ..."
 # Each module's lnInclude contains symlinks like Foo.H -> ../subdir/Foo.H
 # We copy them as real files so CMake can use -I<module>/lnInclude
 find "${OF_ROOT}/src" -type d -name "lnInclude" | while read -r ln_dir; do
-    rel="${ln_dir#${OF_ROOT}/src/}"
+    rel="${ln_dir#${SRC}/}"
     dst_ln="${OUT_DIR}/src/${rel}"
     if [[ -d "${ln_dir}" ]]; then
         mkdir -p "${dst_ln}"
         # Resolve symlinks to real files
         find "${ln_dir}" -maxdepth 1 -type l -o -type f | while read -r link; do
             real="$(realpath "${link}" 2>/dev/null || true)"
-            if [[ -f "${real}" && "${real}" == "${OF_ROOT}/src/"* ]]; then
+            if [[ -f "${real}" && "${real}" == "${SRC}/"* ]]; then
                 cp -n "${real}" "${dst_ln}/$(basename "${link}")" 2>/dev/null || true
             fi
         done
