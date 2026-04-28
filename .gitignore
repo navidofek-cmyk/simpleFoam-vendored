@@ -1,0 +1,8 @@
+# vendor/ is populated by scripts/run_collect.sh — not committed
+vendor/
+
+# build artifacts
+build/
+bin/
+*.o
+*.dep
