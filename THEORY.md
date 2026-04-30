@@ -48,6 +48,74 @@ p^(n+1) = β·p* + (1−β)·p^n        (β = 0.3 typical)
 
 ---
 
+## Numerical schemes — interpolation order
+
+### Available schemes (divergence terms)
+
+| Scheme | Order | Boundedness | Typical use |
+|--------|-------|-------------|-------------|
+| `upwind` | 1st | ✅ unconditional | turbulence on coarse mesh, startup |
+| `linearUpwind` | 2nd | ✅ bounded variant | momentum, nuTilda — default for RANS |
+| `limitedLinear 1` | 1–2nd | ✅ with limiter | k, ε, ω — degrades near sharp gradients |
+| `limitedLinear 0` | 2nd | ⚠️ weak | smooth flows only |
+| `linear` | 2nd | ❌ | not suitable for div without limiter |
+| `MUSCL` | 2nd | ✅ | higher accuracy on structured grids |
+| `vanLeer` | 2nd | ✅ | good for transient flows |
+| `QUICK` | 3rd | ❌ | structured grids, may oscillate |
+
+### Gradient schemes
+
+| Scheme | Order | Notes |
+|--------|-------|-------|
+| `Gauss linear` | 2nd | standard central difference |
+| `Gauss linear corrected` | 2nd | + non-orthogonality correction |
+| `leastSquares` | 2nd | better on unstructured/skewed meshes |
+| `cellLimited Gauss linear 1` | 2nd | gradient limiting for stability |
+
+### Laplacian schemes
+
+| Scheme | Order | Notes |
+|--------|-------|-------|
+| `Gauss linear corrected` | 2nd | corrected = full non-orthogonality fix |
+| `Gauss linear uncorrected` | 1–2nd | faster, less accurate on skewed meshes |
+| `Gauss linear limited 0.5` | 2nd | partial correction (blend) |
+
+### Default schemes in test cases
+
+**pitzDaily** (k-ε, backward-facing step):
+
+| Term | Scheme | Effective order |
+|------|--------|----------------|
+| `div(phi,U)` | `bounded Gauss linearUpwind grad(U)` | **2nd** |
+| `div(phi,k)` | `bounded Gauss limitedLinear 1` | **1–2nd** |
+| `div(phi,epsilon)` | `bounded Gauss limitedLinear 1` | **1–2nd** |
+| `grad(*)` | `Gauss linear` | **2nd** |
+| `laplacian(*,*)` | `Gauss linear corrected` | **2nd** |
+| face interpolation | `linear` | **2nd** |
+
+**airFoil2D** (Spalart-Allmaras, external aerodynamics):
+
+| Term | Scheme | Effective order |
+|------|--------|----------------|
+| `div(phi,U)` | `bounded Gauss linearUpwind grad(U)` | **2nd** |
+| `div(phi,nuTilda)` | `bounded Gauss linearUpwind grad(nuTilda)` | **2nd** |
+| `grad(*)` | `Gauss linear` | **2nd** |
+| `laplacian(*,*)` | `Gauss linear corrected` | **2nd** |
+
+### Why not pure 2nd order for k and ε?
+
+Turbulent quantities k, ε, ω must stay positive. Pure 2nd-order schemes
+(e.g. `linearUpwind`) can produce undershoots → negative k → `sqrt(k)` = NaN → divergence.
+`limitedLinear 1` applies a flux limiter that degrades to 1st order near steep gradients,
+trading accuracy for robustness.
+
+Rule of thumb:
+- **Momentum U, pressure p** → 2nd order (`linearUpwind`)
+- **Turbulence k, ε, ω** → limited scheme (`limitedLinear`, `upwind` for startup)
+- **Coarse mesh / bad quality** → all upwind until convergence, then switch to 2nd order
+
+---
+
 ## Module theory
 
 ### of_core — OpenFOAM core

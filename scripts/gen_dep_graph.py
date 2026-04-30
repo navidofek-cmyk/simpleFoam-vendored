@@ -606,6 +606,7 @@ THEORY_HTML = """<!DOCTYPE html>
   <ol>
     <li><a href="#simpleFoam">simpleFoam — what is it?</a></li>
     <li><a href="#simple">SIMPLE algorithm</a></li>
+    <li><a href="#schemes">Numerical schemes — interpolation order</a></li>
     <li><a href="#modules">Module theory</a></li>
     <li><a href="#refs">Further reading</a></li>
   </ol>
@@ -639,13 +640,61 @@ p^(n+1) = β·p* + (1−β)·p^n        (β = 0.3 typical)</pre>
 
 <h3>Default numerical schemes (pitzDaily)</h3>
 <table>
-  <tr><th>Term</th><th>Scheme</th></tr>
-  <tr><td><code>div(phi, U)</code></td><td>linearUpwind</td></tr>
-  <tr><td><code>div(phi, k)</code></td><td>upwind</td></tr>
-  <tr><td><code>div(phi, epsilon)</code></td><td>upwind</td></tr>
-  <tr><td><code>laplacian(nu, U)</code></td><td>Gauss linear corrected</td></tr>
-  <tr><td><code>p</code> solver</td><td>GAMG + GaussSeidel smoother</td></tr>
+  <tr><th>Term</th><th>Scheme</th><th>Order</th></tr>
+  <tr><td><code>div(phi, U)</code></td><td>bounded Gauss linearUpwind grad(U)</td><td>2nd</td></tr>
+  <tr><td><code>div(phi, k/epsilon)</code></td><td>bounded Gauss limitedLinear 1</td><td>1–2nd</td></tr>
+  <tr><td><code>grad(*)</code></td><td>Gauss linear</td><td>2nd</td></tr>
+  <tr><td><code>laplacian(*,*)</code></td><td>Gauss linear corrected</td><td>2nd</td></tr>
+  <tr><td>face interpolation</td><td>linear</td><td>2nd</td></tr>
+  <tr><td><code>p</code> solver</td><td>GAMG + GaussSeidel smoother</td><td>—</td></tr>
 </table>
+
+<h2 id="schemes">Numerical schemes — interpolation order</h2>
+
+<h3>Divergence (convection) schemes</h3>
+<table>
+  <tr><th>Scheme</th><th>Order</th><th>Boundedness</th><th>Typical use</th></tr>
+  <tr><td><code>upwind</code></td><td>1st</td><td>✅ unconditional</td><td>startup, coarse mesh</td></tr>
+  <tr><td><code>linearUpwind</code></td><td>2nd</td><td>✅ bounded variant</td><td>momentum U, nuTilda</td></tr>
+  <tr><td><code>limitedLinear 1</code></td><td>1–2nd</td><td>✅ flux limiter</td><td>k, ε, ω — degrades near gradients</td></tr>
+  <tr><td><code>limitedLinear 0</code></td><td>2nd</td><td>⚠️ weak</td><td>smooth flows only</td></tr>
+  <tr><td><code>vanLeer</code></td><td>2nd</td><td>✅</td><td>transient, general</td></tr>
+  <tr><td><code>MUSCL</code></td><td>2nd</td><td>✅</td><td>structured grids</td></tr>
+  <tr><td><code>QUICK</code></td><td>3rd</td><td>❌</td><td>structured only, may oscillate</td></tr>
+</table>
+
+<h3>Gradient schemes</h3>
+<table>
+  <tr><th>Scheme</th><th>Order</th><th>Notes</th></tr>
+  <tr><td><code>Gauss linear</code></td><td>2nd</td><td>central difference, standard</td></tr>
+  <tr><td><code>leastSquares</code></td><td>2nd</td><td>better on unstructured/skewed meshes</td></tr>
+  <tr><td><code>cellLimited Gauss linear 1</code></td><td>2nd</td><td>gradient limiting for stability</td></tr>
+</table>
+
+<h3>Why not pure 2nd order for k and ε?</h3>
+<p>
+  Turbulent quantities k, ε, ω must stay positive. Pure 2nd-order schemes can produce
+  undershoots → negative k → <code>sqrt(k) = NaN</code> → divergence.
+  <code>limitedLinear 1</code> applies a flux limiter that degrades to 1st order near steep
+  gradients, trading accuracy for robustness.
+</p>
+<table>
+  <tr><th>Variable</th><th>Recommended scheme</th><th>Reason</th></tr>
+  <tr><td>U, p</td><td><code>linearUpwind</code></td><td>smooth, 2nd order accuracy needed</td></tr>
+  <tr><td>k, ε, ω</td><td><code>limitedLinear 1</code></td><td>positivity preservation</td></tr>
+  <tr><td>startup / coarse mesh</td><td><code>upwind</code> for all</td><td>maximum stability, then switch</td></tr>
+</table>
+
+<h3>Comparison: pitzDaily vs airFoil2D</h3>
+<table>
+  <tr><th>Term</th><th>pitzDaily (k-ε)</th><th>airFoil2D (SA)</th></tr>
+  <tr><td><code>div(phi,U)</code></td><td>linearUpwind — 2nd</td><td>linearUpwind — 2nd</td></tr>
+  <tr><td>turbulence scalar</td><td>limitedLinear 1 — 1–2nd (k, ε)</td><td>linearUpwind — 2nd (nuTilda)</td></tr>
+  <tr><td>gradient</td><td>Gauss linear — 2nd</td><td>Gauss linear — 2nd</td></tr>
+  <tr><td>laplacian</td><td>Gauss linear corrected — 2nd</td><td>Gauss linear corrected — 2nd</td></tr>
+</table>
+<p>SA uses <code>linearUpwind</code> for <code>nuTilda</code> because the working variable is smoother
+than k or ε and less prone to undershoots.</p>
 
 <h2 id="modules">Module theory</h2>
 MODULE_CARDS
