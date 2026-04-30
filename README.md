@@ -4,7 +4,10 @@ Build **simpleFoam without OpenFOAM installed on the host**.
 Approach: vendor all required OF source files and compile them via CMake inside a clean Ubuntu container.
 
 **[Interactive dependency graph →](https://navidofek-cmyk.github.io/simpleFoam-vendored/)**  
-15 modules · 45 dependency edges · source file counts per module
+15 modules · 45 dependency edges · double-click any node for theory + source files
+
+**[Theory →](THEORY.md)**  
+SIMPLE algorithm · RANS turbulence models · FV discretisation · all modules explained
 
 > **Enable GitHub Pages:** repo → Settings → Pages → Source: `Deploy from a branch` → Branch: `master` / folder: `/docs` → Save
 
