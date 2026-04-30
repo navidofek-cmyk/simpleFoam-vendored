@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>simpleFoam — Theory</title>
+<style>
+  body { margin: 0; background: #1a1a2e; font-family: sans-serif; color: #ccc;
+         max-width: 860px; margin: 0 auto; padding: 32px 24px 80px; }
+  h1 { color: #7ecfff; font-size: 1.6rem; margin-bottom: 4px; }
+  .nav { font-size: 0.85rem; margin-bottom: 40px; }
+  .nav a { color: #7ecfff; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  h2 { color: #7ecfff; font-size: 1.1rem; border-bottom: 1px solid #334;
+       padding-bottom: 6px; margin-top: 40px; }
+  h3 { color: #aad4f5; font-size: 0.95rem; margin-top: 24px; }
+  p  { line-height: 1.7; font-size: 0.9rem; }
+  code, pre { background: #0f1a2e; border-radius: 4px; font-family: monospace; }
+  code { padding: 1px 5px; color: #ffd; font-size: 0.85em; }
+  pre  { padding: 12px 16px; overflow-x: auto; font-size: 0.82rem;
+         border-left: 3px solid #334; color: #bdf; line-height: 1.6; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.85rem; margin: 12px 0; }
+  th { background: #16213e; color: #7ecfff; padding: 7px 12px; text-align: left; }
+  td { padding: 6px 12px; border-bottom: 1px solid #223; }
+  tr:hover td { background: #16213e; }
+  .tag { display: inline-block; background: #1a3050; color: #7ecfff;
+         border-radius: 4px; padding: 2px 8px; font-size: 0.78rem; margin: 2px; }
+  .module-card { background: #16213e; border-radius: 8px; padding: 18px 20px;
+                 margin-bottom: 24px; border-left: 4px solid #334; }
+  .module-card h3 { margin-top: 0; }
+  a { color: #7ecfff; }
+  .toc { background: #16213e; border-radius: 8px; padding: 16px 20px; margin-bottom: 32px; }
+  .toc li { margin: 4px 0; font-size: 0.85rem; }
+</style>
+</head>
+<body>
+<h1>simpleFoam — Theory</h1>
+<div class="nav">
+  <a href="index.html">← dependency graph</a> &nbsp;·&nbsp;
+  <a href="https://github.com/navidofek-cmyk/simpleFoam-vendored">GitHub</a>
+</div>
+
+<div class="toc">
+  <b>Contents</b>
+  <ol>
+    <li><a href="#simpleFoam">simpleFoam — what is it?</a></li>
+    <li><a href="#simple">SIMPLE algorithm</a></li>
+    <li><a href="#modules">Module theory</a></li>
+    <li><a href="#refs">Further reading</a></li>
+  </ol>
+</div>
+
+<h2 id="simpleFoam">simpleFoam — what is it?</h2>
+<p>
+  <b>simpleFoam</b> is a steady-state, incompressible, turbulent RANS solver based on the
+  <b>SIMPLE</b> algorithm (Semi-Implicit Method for Pressure-Linked Equations,
+  Patankar &amp; Spalding 1972). It solves the Reynolds-Averaged Navier-Stokes (RANS)
+  equations for incompressible flow:
+</p>
+<pre>∇·U = 0                               (continuity)
+∇·(UU) − ∇·(νeff ∇U) = −∇p           (momentum)</pre>
+<p>where <code>νeff = ν + νt</code> is the sum of molecular and turbulent kinematic viscosity.</p>
+
+<h2 id="simple">SIMPLE algorithm</h2>
+<h3>Iteration loop</h3>
+<ol>
+  <li><b>Momentum predictor</b> — solve momentum with explicit pressure gradient → <code>U*</code></li>
+  <li><b>Pressure equation</b> — assemble from continuity constraint, solve for <code>p</code></li>
+  <li><b>Velocity corrector</b> — <code>U = U* − ∇p / aP</code></li>
+  <li><b>Turbulence equations</b> — solve for <code>k</code>, <code>ε</code> or <code>ω</code></li>
+  <li>Repeat until residuals &lt; tolerance</li>
+</ol>
+
+<h3>Under-relaxation</h3>
+<p>Stabilises the iteration (prevents divergence of non-linear terms):</p>
+<pre>U^(n+1) = α·U* + (1−α)·U^n        (α = 0.7 typical)
+p^(n+1) = β·p* + (1−β)·p^n        (β = 0.3 typical)</pre>
+
+<h3>Default numerical schemes (pitzDaily)</h3>
+<table>
+  <tr><th>Term</th><th>Scheme</th></tr>
+  <tr><td><code>div(phi, U)</code></td><td>linearUpwind</td></tr>
+  <tr><td><code>div(phi, k)</code></td><td>upwind</td></tr>
+  <tr><td><code>div(phi, epsilon)</code></td><td>upwind</td></tr>
+  <tr><td><code>laplacian(nu, U)</code></td><td>Gauss linear corrected</td></tr>
+  <tr><td><code>p</code> solver</td><td>GAMG + GaussSeidel smoother</td></tr>
+</table>
+
+<h2 id="modules">Module theory</h2>
+<div class="module-card" style="border-left-color:#4e79a7"><h3>OpenFOAM core <small style="color:#555;font-size:0.8em">— of_core</small></h3><p>The foundation of all OpenFOAM solvers. Provides the mesh abstraction (<code>polyMesh</code>, <code>fvMesh</code>), geometric fields (<code>volScalarField</code>, <code>volVectorField</code>), I/O system, dictionary parsing, linear algebra solvers (GAMG, PCG, PBiCGStab, smoothSolvers), and the RunTime Selection Table mechanism that enables dynamic type registration.</p><span class="tag">polyMesh</span><span class="tag">fvMesh</span><span class="tag">GeometricField</span><span class="tag">GAMG</span><span class="tag">PCG</span><span class="tag">dictionary</span><span class="tag">RunTime Selection</span></div>
+<div class="module-card" style="border-left-color:#4e79a7"><h3>OSspecific (POSIX) <small style="color:#555;font-size:0.8em">— of_os</small></h3><p>OS abstraction layer for Linux/POSIX. Handles file I/O operations (<code>uncollatedFileOperation</code>, <code>masterUncollatedFileOperation</code>), signal handling (SIGSEGV, SIGFPE), CPU/clock timers, and the <code>printStack</code> backtrace mechanism. The file operation classes determine how parallel processes read and write case files.</p><span class="tag">fileOperation</span><span class="tag">uncollated</span><span class="tag">masterUncollated</span><span class="tag">printStack</span><span class="tag">POSIX</span></div>
+<div class="module-card" style="border-left-color:#4e79a7"><h3>Pstream (MPI) <small style="color:#555;font-size:0.8em">— of_pstream</small></h3><p>MPI communication layer. Wraps <code>MPI_Send</code>/<code>MPI_Recv</code> and collective operations (broadcast, reduce, gather) behind the <code>Pstream</code> abstraction. Enables domain-decomposed parallel runs where each MPI rank holds a subdomain. <code>processorPolyPatch</code> boundaries exchange halo data each iteration.</p><span class="tag">MPI</span><span class="tag">Pstream</span><span class="tag">processorPatch</span><span class="tag">halo exchange</span><span class="tag">domain decomposition</span></div>
+<div class="module-card" style="border-left-color:#59a14f"><h3>fileFormats <small style="color:#555;font-size:0.8em">— of_ff</small></h3><p>Readers and writers for surface geometry formats: STL (ASCII/binary), NAS/Nastran, OBJ, VTK. The VTK writers use <code>vtkWriteOps</code> to produce legacy VTK format for post-processing in ParaView. STL ASCII parsing is implemented as a Flex lexer grammar.</p><span class="tag">STL</span><span class="tag">VTK</span><span class="tag">NAS</span><span class="tag">OBJ</span><span class="tag">vtkWriteOps</span><span class="tag">Flex lexer</span></div>
+<div class="module-card" style="border-left-color:#59a14f"><h3>triSurface <small style="color:#555;font-size:0.8em">— of_tri</small></h3><p>Triangulated surface representation (<code>triSurface</code>). Used for geometry operations: surface intersection, point projection, nearest-point queries. Essential for snappyHexMesh and distance-based boundary conditions. Reads STL, OBJ, GTS, VTK, NAS triangle meshes.</p><span class="tag">triSurface</span><span class="tag">surface intersection</span><span class="tag">point projection</span><span class="tag">STL reader</span></div>
+<div class="module-card" style="border-left-color:#59a14f"><h3>surfMesh <small style="color:#555;font-size:0.8em">— of_surf</small></h3><p>Generic surface mesh with arbitrary polygonal faces (<code>MeshedSurface</code>, <code>UnsortedMeshedSurface</code>). Supports format converters for AC3D, GTS, NAS, OBJ, OFF, OFS, SMESH, STARCD, STL, TRI, VTK, WRL, X3D. Used by sampling and post-processing to define output surfaces.</p><span class="tag">MeshedSurface</span><span class="tag">surfZone</span><span class="tag">surface formats</span><span class="tag">AC3D</span><span class="tag">STARCD</span></div>
+<div class="module-card" style="border-left-color:#f28e2b"><h3>finiteVolume <small style="color:#555;font-size:0.8em">— of_fv</small></h3><p>Core FV discretisation. Implements the discrete operators acting on <code>fvMesh</code>: divergence (<code>fvc::div</code>), gradient (<code>fvc::grad</code>), Laplacian (<code>fvc::laplacian</code>), time derivative (<code>fvc::ddt</code>). Provides all interpolation schemes (linear, upwind, limitedLinear, MUSCL…), boundary condition types, and the <code>fvMatrix</code> sparse linear system assembled per transport equation. Also contains the SIMPLE/PISO/PIMPLE control loops and the pressure-velocity coupling infrastructure.</p><span class="tag">fvc::div</span><span class="tag">fvc::grad</span><span class="tag">fvMatrix</span><span class="tag">SIMPLE</span><span class="tag">PISO</span><span class="tag">GAMG</span><span class="tag">interpolation schemes</span><span class="tag">boundary conditions</span></div>
+<div class="module-card" style="border-left-color:#f28e2b"><h3>meshTools <small style="color:#555;font-size:0.8em">— of_mt</small></h3><p>Higher-level mesh utilities built on top of <code>polyMesh</code>: octree-based point/cell/face searching (<code>indexedOctree</code>), mesh region decomposition, non-conformal patch handling, cell sets/face sets/point sets, edge mesh operations, wave propagation algorithms (<code>FaceCellWave</code>), and mesh-to-mesh interpolation (<code>meshToMesh</code>).</p><span class="tag">indexedOctree</span><span class="tag">FaceCellWave</span><span class="tag">meshToMesh</span><span class="tag">cellSet</span><span class="tag">faceSet</span><span class="tag">nonConformal</span></div>
+<div class="module-card" style="border-left-color:#edc948"><h3>physicalProperties <small style="color:#555;font-size:0.8em">— of_pp</small></h3><p>Reads fluid physical properties from <code>physicalProperties</code> (formerly <code>transportProperties</code>). Provides the <code>viscosityModel</code> abstraction: Newtonian (constant ν), power-law, Carreau, Cross, HerschelBulkley for non-Newtonian fluids. simpleFoam reads kinematic viscosity ν from this dictionary.</p><span class="tag">viscosityModel</span><span class="tag">Newtonian</span><span class="tag">kinematic viscosity</span><span class="tag">transportProperties</span></div>
+<div class="module-card" style="border-left-color:#76b7b2"><h3>lagrangian/basic <small style="color:#555;font-size:0.8em">— of_lag</small></h3><p>Base classes for Lagrangian (particle-tracking) simulations. <code>particle</code> stores position and tracks particles through the Eulerian mesh using barycentric coordinates. <code>Cloud&lt;ParticleType&gt;</code> manages the particle ensemble. Required by the <code>sampling</code> module for streamline and particle-based set sampling.</p><span class="tag">particle</span><span class="tag">Cloud</span><span class="tag">barycentric coordinates</span><span class="tag">particle tracking</span><span class="tag">Lagrangian</span></div>
+<div class="module-card" style="border-left-color:#76b7b2"><h3>sampling <small style="color:#555;font-size:0.8em">— of_sam</small></h3><p>Runtime data extraction for post-processing. <b>sampledSurfaces</b>: interpolate fields onto planes, iso-surfaces, patch surfaces. <b>sampledSets</b>: extract along lines, arcs, uniform grids, cell centres. <b>probes</b>: point values over time. Results written as VTK, raw CSV, gnuplot formats. Configured in <code>system/controlDict</code> under <code>functions</code>.</p><span class="tag">sampledSurface</span><span class="tag">sampledSet</span><span class="tag">probes</span><span class="tag">iso-surface</span><span class="tag">VTK output</span></div>
+<div class="module-card" style="border-left-color:#b07aa1"><h3>MomentumTransport (base) <small style="color:#555;font-size:0.8em">— of_mtm</small></h3><p>Abstract base for turbulence modelling. Defines the interface for RANS, LES and laminar closures: effective viscosity <code>nuEff()</code>, turbulent kinetic energy <code>k()</code>, dissipation <code>epsilon()</code>/<code>omega()</code>, and the <code>correct()</code> method called each iteration. Generalised Newtonian viscosity models also reside here.</p><span class="tag">RANS</span><span class="tag">LES</span><span class="tag">nuEff</span><span class="tag">turbulence closure</span><span class="tag">correct()</span><span class="tag">momentumTransportModel</span></div>
+<div class="module-card" style="border-left-color:#b07aa1"><h3>MomentumTransport (incompressible) <small style="color:#555;font-size:0.8em">— of_mti</small></h3><p>Incompressible turbulence models (constant density ρ=1). <b>RANS</b>: k-ε (standard, RNG, realizable), k-ω SST, Spalart-Allmaras, Launder-Sharma k-ε, v²-f, k-kL-ω. <b>LES</b>: Smagorinsky, dynamic k-equation, WALE. <b>Laminar</b>: for Re &lt; Re_crit or DNS. simpleFoam uses this module to solve the closure equations for k, ε (or ω) after each momentum/pressure iteration.</p><span class="tag">k-epsilon</span><span class="tag">k-omega SST</span><span class="tag">Spalart-Allmaras</span><span class="tag">Smagorinsky</span><span class="tag">RANS</span><span class="tag">LES</span><span class="tag">incompressible</span></div>
+<div class="module-card" style="border-left-color:#ff9da7"><h3>fvModels <small style="color:#555;font-size:0.8em">— of_fvm</small></h3><p>Source term injection into transport equations. Models add or modify terms in the <code>fvMatrix</code> via <code>addSup()</code>: <b>MRF</b> (moving reference frame — rotating machinery), <b>porosity</b> (Darcy-Forchheimer resistance), <b>explicitPorositySource</b>, <b>codedFvModel</b> (runtime C++). Also includes inter-region coupling and rotor-disk actuator model.</p><span class="tag">fvModel</span><span class="tag">MRF</span><span class="tag">porosity</span><span class="tag">Darcy-Forchheimer</span><span class="tag">source term</span><span class="tag">addSup</span></div>
+<div class="module-card" style="border-left-color:#ff9da7"><h3>fvConstraints <small style="color:#555;font-size:0.8em">— of_fvc</small></h3><p>Hard constraints applied after equation solution: <b>fixedValueConstraint</b> enforces Dirichlet values on selected cells, <b>meanVelocityForce</b> adjusts a body force to achieve a target mean velocity (channel flow), <b>limitMag</b>/<b>limitPressure</b> clip field magnitudes to physical bounds. Called via <code>fvConstraints.constrain(field)</code>.</p><span class="tag">fvConstraint</span><span class="tag">fixedValue</span><span class="tag">meanVelocityForce</span><span class="tag">limitMag</span><span class="tag">constrain</span></div>
+<div class="module-card" style="border-left-color:#e15759"><h3>simpleFoamExtracted <small style="color:#555;font-size:0.8em">— simpleFoam</small></h3><p><b>simpleFoam</b> is a steady-state, incompressible, turbulent RANS solver based on the <b>SIMPLE</b> algorithm (Semi-Implicit Method for Pressure-Linked Equations, Patankar &amp; Spalding 1972).<br><br><b>Governing equations:</b><br>∇·U = 0 &nbsp;&nbsp;<i>(continuity)</i><br>∇·(UU) − ∇·(ν<sub>eff</sub>∇U) = −∇p &nbsp;&nbsp;<i>(momentum)</i><br><br><b>SIMPLE loop each iteration:</b><br>1. Solve momentum equation with explicit pressure gradient → U*<br>2. Assemble pressure equation from continuity constraint → solve for p<br>3. Correct velocity: U = U* − (∇p)/a<sub>p</sub><br>4. Solve turbulence equations (k, ε or ω)<br>5. Repeat until residuals &lt; tolerance<br><br><b>Under-relaxation</b> (α&lt;1) stabilises the iteration: U<sup>n+1</sup> = αU* + (1−α)U<sup>n</sup>.<br><br><b>Default schemes</b> (pitzDaily):<br>div(phi,U): linearUpwind · div(phi,k): upwind<br>laplacian: Gauss linear corrected<br>p solver: GAMG + GaussSeidel smoother</p><span class="tag">SIMPLE</span><span class="tag">RANS</span><span class="tag">steady-state</span><span class="tag">incompressible</span><span class="tag">pressure-velocity coupling</span><span class="tag">under-relaxation</span><span class="tag">linearUpwind</span><span class="tag">GAMG</span></div>
+
+<h2 id="refs">Further reading</h2>
+<ul>
+  <li>Patankar, S.V. (1980). <i>Numerical Heat Transfer and Fluid Flow</i>. Taylor &amp; Francis.</li>
+  <li>Jasak, H. (1996). <i>Error Analysis and Estimation for the Finite Volume Method</i>. PhD thesis, Imperial College London.</li>
+  <li>Versteeg, H.K. &amp; Malalasekera, W. (2007). <i>An Introduction to CFD: The Finite Volume Method</i>. Pearson.</li>
+  <li><a href="https://openfoam.org/documentation/">OpenFOAM documentation</a></li>
+  <li><a href="https://github.com/OpenFOAM/OpenFOAM-10">OpenFOAM-10 source</a></li>
+</ul>
+</body>
+</html>

@@ -377,7 +377,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 </head>
 <body>
 <h1>simpleFoam_vendored — module dependency graph</h1>
-<p class="sub">Scroll to zoom · drag to pan · click node to explore · double-click to open file list</p>
+<p class="sub">Scroll to zoom · drag to pan · click node to highlight · double-click for theory &amp; files &nbsp;|&nbsp; <a href="theory.html" style="color:#7ecfff">Theory →</a></p>
 <div class="tooltip" id="tip"></div>
 <svg id="graph"></svg>
 <div id="hint">click background to deselect</div>
@@ -560,14 +560,138 @@ sim.on("tick", () => {
 </html>
 """
 
+THEORY_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>simpleFoam — Theory</title>
+<style>
+  body { margin: 0; background: #1a1a2e; font-family: sans-serif; color: #ccc;
+         max-width: 860px; margin: 0 auto; padding: 32px 24px 80px; }
+  h1 { color: #7ecfff; font-size: 1.6rem; margin-bottom: 4px; }
+  .nav { font-size: 0.85rem; margin-bottom: 40px; }
+  .nav a { color: #7ecfff; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  h2 { color: #7ecfff; font-size: 1.1rem; border-bottom: 1px solid #334;
+       padding-bottom: 6px; margin-top: 40px; }
+  h3 { color: #aad4f5; font-size: 0.95rem; margin-top: 24px; }
+  p  { line-height: 1.7; font-size: 0.9rem; }
+  code, pre { background: #0f1a2e; border-radius: 4px; font-family: monospace; }
+  code { padding: 1px 5px; color: #ffd; font-size: 0.85em; }
+  pre  { padding: 12px 16px; overflow-x: auto; font-size: 0.82rem;
+         border-left: 3px solid #334; color: #bdf; line-height: 1.6; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.85rem; margin: 12px 0; }
+  th { background: #16213e; color: #7ecfff; padding: 7px 12px; text-align: left; }
+  td { padding: 6px 12px; border-bottom: 1px solid #223; }
+  tr:hover td { background: #16213e; }
+  .tag { display: inline-block; background: #1a3050; color: #7ecfff;
+         border-radius: 4px; padding: 2px 8px; font-size: 0.78rem; margin: 2px; }
+  .module-card { background: #16213e; border-radius: 8px; padding: 18px 20px;
+                 margin-bottom: 24px; border-left: 4px solid #334; }
+  .module-card h3 { margin-top: 0; }
+  a { color: #7ecfff; }
+  .toc { background: #16213e; border-radius: 8px; padding: 16px 20px; margin-bottom: 32px; }
+  .toc li { margin: 4px 0; font-size: 0.85rem; }
+</style>
+</head>
+<body>
+<h1>simpleFoam — Theory</h1>
+<div class="nav">
+  <a href="index.html">← dependency graph</a> &nbsp;·&nbsp;
+  <a href="https://github.com/navidofek-cmyk/simpleFoam-vendored">GitHub</a>
+</div>
+
+<div class="toc">
+  <b>Contents</b>
+  <ol>
+    <li><a href="#simpleFoam">simpleFoam — what is it?</a></li>
+    <li><a href="#simple">SIMPLE algorithm</a></li>
+    <li><a href="#modules">Module theory</a></li>
+    <li><a href="#refs">Further reading</a></li>
+  </ol>
+</div>
+
+<h2 id="simpleFoam">simpleFoam — what is it?</h2>
+<p>
+  <b>simpleFoam</b> is a steady-state, incompressible, turbulent RANS solver based on the
+  <b>SIMPLE</b> algorithm (Semi-Implicit Method for Pressure-Linked Equations,
+  Patankar &amp; Spalding 1972). It solves the Reynolds-Averaged Navier-Stokes (RANS)
+  equations for incompressible flow:
+</p>
+<pre>∇·U = 0                               (continuity)
+∇·(UU) − ∇·(νeff ∇U) = −∇p           (momentum)</pre>
+<p>where <code>νeff = ν + νt</code> is the sum of molecular and turbulent kinematic viscosity.</p>
+
+<h2 id="simple">SIMPLE algorithm</h2>
+<h3>Iteration loop</h3>
+<ol>
+  <li><b>Momentum predictor</b> — solve momentum with explicit pressure gradient → <code>U*</code></li>
+  <li><b>Pressure equation</b> — assemble from continuity constraint, solve for <code>p</code></li>
+  <li><b>Velocity corrector</b> — <code>U = U* − ∇p / aP</code></li>
+  <li><b>Turbulence equations</b> — solve for <code>k</code>, <code>ε</code> or <code>ω</code></li>
+  <li>Repeat until residuals &lt; tolerance</li>
+</ol>
+
+<h3>Under-relaxation</h3>
+<p>Stabilises the iteration (prevents divergence of non-linear terms):</p>
+<pre>U^(n+1) = α·U* + (1−α)·U^n        (α = 0.7 typical)
+p^(n+1) = β·p* + (1−β)·p^n        (β = 0.3 typical)</pre>
+
+<h3>Default numerical schemes (pitzDaily)</h3>
+<table>
+  <tr><th>Term</th><th>Scheme</th></tr>
+  <tr><td><code>div(phi, U)</code></td><td>linearUpwind</td></tr>
+  <tr><td><code>div(phi, k)</code></td><td>upwind</td></tr>
+  <tr><td><code>div(phi, epsilon)</code></td><td>upwind</td></tr>
+  <tr><td><code>laplacian(nu, U)</code></td><td>Gauss linear corrected</td></tr>
+  <tr><td><code>p</code> solver</td><td>GAMG + GaussSeidel smoother</td></tr>
+</table>
+
+<h2 id="modules">Module theory</h2>
+MODULE_CARDS
+
+<h2 id="refs">Further reading</h2>
+<ul>
+  <li>Patankar, S.V. (1980). <i>Numerical Heat Transfer and Fluid Flow</i>. Taylor &amp; Francis.</li>
+  <li>Jasak, H. (1996). <i>Error Analysis and Estimation for the Finite Volume Method</i>. PhD thesis, Imperial College London.</li>
+  <li>Versteeg, H.K. &amp; Malalasekera, W. (2007). <i>An Introduction to CFD: The Finite Volume Method</i>. Pearson.</li>
+  <li><a href="https://openfoam.org/documentation/">OpenFOAM documentation</a></li>
+  <li><a href="https://github.com/OpenFOAM/OpenFOAM-10">OpenFOAM-10 source</a></li>
+</ul>
+</body>
+</html>
+"""
+
+
+def gen_theory_html(graph):
+    cards = []
+    for node in graph["nodes"]:
+        if not node.get("theory"):
+            continue
+        color = node.get("color", "#334")
+        tags = "".join(f'<span class="tag">{k}</span>' for k in node.get("keywords", []))
+        cards.append(
+            f'<div class="module-card" style="border-left-color:{color}">'
+            f'<h3>{node["label"]} <small style="color:#555;font-size:0.8em">— {node["id"]}</small></h3>'
+            f'<p>{node["theory"]}</p>'
+            f'{tags}'
+            f'</div>'
+        )
+    html = THEORY_HTML.replace("MODULE_CARDS", "\n".join(cards))
+    out = os.path.join(OUT_DIR, "theory.html")
+    with open(out, "w") as f:
+        f.write(html)
+    print(f"Generated: {out}")
+
+
 def main():
     graph = build_graph()
     os.makedirs(OUT_DIR, exist_ok=True)
     html = HTML_TEMPLATE.replace("GRAPH_DATA", json.dumps(graph, indent=2))
     with open(OUT_HTML, "w") as f:
         f.write(html)
+    gen_theory_html(graph)
     total = sum(n["sources"] for n in graph["nodes"])
-    print(f"Generated: {OUT_HTML}")
     print(f"Modules: {len(MODULES)}  |  Edges: {len(EDGES)}  |  Total .C tracked: {total}")
 
 
