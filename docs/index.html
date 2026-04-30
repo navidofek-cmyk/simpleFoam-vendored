@@ -4,26 +4,37 @@
 <meta charset="UTF-8">
 <title>simpleFoam_vendored — dependency graph</title>
 <style>
-  body { margin: 0; background: #1a1a2e; font-family: sans-serif; color: #eee; }
-  h1 { text-align: center; padding: 16px 0 4px; font-size: 1.2rem; color: #aaa; font-weight: 300; }
-  p.sub { text-align: center; font-size: 0.8rem; color: #555; margin: 0 0 8px; }
-  svg { width: 100%; height: calc(100vh - 80px); }
-  .link { stroke: #444; stroke-opacity: 0.6; }
-  .node circle { stroke: #222; stroke-width: 1.5px; cursor: pointer; }
+  body { margin: 0; background: #1a1a2e; font-family: sans-serif; color: #eee; overflow: hidden; }
+  h1 { text-align: center; padding: 14px 0 2px; font-size: 1.15rem; color: #aaa; font-weight: 300; margin: 0; }
+  p.sub { text-align: center; font-size: 0.78rem; color: #555; margin: 0 0 4px; }
+  svg { width: 100%; height: calc(100vh - 68px); cursor: grab; }
+  svg:active { cursor: grabbing; }
+  .link { stroke: #444; stroke-opacity: 0.5; }
+  .link.highlighted { stroke: #fff; stroke-opacity: 1; stroke-width: 2.5px !important; }
+  .link.dimmed { stroke-opacity: 0.08; }
+  .node circle { stroke: #222; stroke-width: 1.5px; cursor: pointer; transition: opacity 0.15s; }
+  .node.dimmed circle { opacity: 0.15; }
+  .node.dimmed text { opacity: 0.1; }
   .node text { font-size: 11px; fill: #ddd; pointer-events: none; }
   .node .count { font-size: 9px; fill: #888; }
+  .node.selected circle { stroke: #fff; stroke-width: 3px; }
   .tooltip {
-    position: absolute; background: #16213e; border: 1px solid #444;
-    padding: 8px 12px; border-radius: 6px; font-size: 12px; pointer-events: none;
-    opacity: 0; transition: opacity 0.2s;
+    position: absolute; background: #16213e; border: 1px solid #556;
+    padding: 10px 14px; border-radius: 8px; font-size: 12px; pointer-events: none;
+    opacity: 0; transition: opacity 0.15s; max-width: 240px; line-height: 1.6;
   }
+  .tooltip b { color: #7ecfff; }
+  .tooltip .deps { margin-top: 6px; color: #aaa; font-size: 11px; }
+  #hint { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%);
+    font-size: 11px; color: #444; pointer-events: none; }
 </style>
 </head>
 <body>
 <h1>simpleFoam_vendored — module dependency graph</h1>
-<p class="sub">Node size ∝ source file count · hover for details · drag to rearrange</p>
+<p class="sub">Scroll to zoom · drag canvas to pan · click node to highlight · drag node to pin</p>
 <div class="tooltip" id="tip"></div>
 <svg id="graph"></svg>
+<div id="hint">click anywhere to deselect</div>
 <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
 <script>
 const data = {
@@ -326,52 +337,114 @@ const data = {
 };
 
 const svg = d3.select("#graph");
-const W = window.innerWidth, H = window.innerHeight - 80;
+const W = window.innerWidth, H = window.innerHeight - 68;
 svg.attr("viewBox", [0, 0, W, H]);
 
+// ── zoom ────────────────────────────────────────────────────────────────────
+const zoomLayer = svg.append("g");
+svg.call(d3.zoom()
+  .scaleExtent([0.15, 4])
+  .on("zoom", e => zoomLayer.attr("transform", e.transform)));
+
+// deselect on background click
+svg.on("click", (e) => { if (e.target.tagName === "svg") clearSelection(); });
+
+// ── simulation ──────────────────────────────────────────────────────────────
 const sim = d3.forceSimulation(data.nodes)
-  .force("link", d3.forceLink(data.links).id(d => d.id).distance(120))
-  .force("charge", d3.forceManyBody().strength(-400))
+  .force("link", d3.forceLink(data.links).id(d => d.id).distance(130))
+  .force("charge", d3.forceManyBody().strength(-500))
   .force("center", d3.forceCenter(W/2, H/2))
-  .force("collision", d3.forceCollide(d => d.radius + 10));
+  .force("collision", d3.forceCollide(d => d.radius + 12));
 
-const link = svg.append("g").selectAll("line")
-  .data(data.links).join("line").attr("class","link").attr("stroke-width", 1.5);
+// ── links ───────────────────────────────────────────────────────────────────
+const link = zoomLayer.append("g").selectAll("line")
+  .data(data.links).join("line")
+  .attr("class","link").attr("stroke-width", 1.5)
+  .attr("marker-end", "url(#arrow)");
 
-const node = svg.append("g").selectAll("g")
+// arrowhead
+svg.append("defs").append("marker")
+  .attr("id","arrow").attr("viewBox","0 -4 8 8").attr("refX",8).attr("refY",0)
+  .attr("markerWidth",6).attr("markerHeight",6).attr("orient","auto")
+  .append("path").attr("d","M0,-4L8,0L0,4").attr("fill","#666");
+
+// ── nodes ───────────────────────────────────────────────────────────────────
+const nodeG = zoomLayer.append("g").selectAll("g")
   .data(data.nodes).join("g").attr("class","node")
   .call(d3.drag()
     .on("start", (e,d) => { if(!e.active) sim.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; })
     .on("drag",  (e,d) => { d.fx=e.x; d.fy=e.y; })
-    .on("end",   (e,d) => { if(!e.active) sim.alphaTarget(0); d.fx=null; d.fy=null; }));
+    .on("end",   (e,d) => { if(!e.active) sim.alphaTarget(0); }));
 
-node.append("circle")
+nodeG.append("circle")
   .attr("r", d => d.radius)
-  .attr("fill", d => d.color)
-  .on("mouseover", (e,d) => {
-    const tip = document.getElementById("tip");
-    tip.innerHTML = `<b>${d.label}</b><br>Module: ${d.id}<br>Source files: ${d.sources}`;
-    tip.style.opacity = 1;
-    tip.style.left = (e.pageX+12)+"px";
-    tip.style.top  = (e.pageY-28)+"px";
-  })
-  .on("mousemove", e => {
-    const tip = document.getElementById("tip");
-    tip.style.left = (e.pageX+12)+"px";
-    tip.style.top  = (e.pageY-28)+"px";
-  })
-  .on("mouseout", () => { document.getElementById("tip").style.opacity = 0; });
+  .attr("fill", d => d.color);
 
-node.append("text").attr("dy", "0.35em").attr("text-anchor","middle")
+nodeG.append("text").attr("dy","0.35em").attr("text-anchor","middle")
   .text(d => d.id === "simpleFoam" ? "simpleFoam" : d.id.replace("of_",""));
 
-node.append("text").attr("class","count").attr("dy","1.6em").attr("text-anchor","middle")
+nodeG.append("text").attr("class","count").attr("dy","1.6em").attr("text-anchor","middle")
   .text(d => d.sources > 0 ? d.sources+" .C" : "");
 
+// ── tooltip + click ─────────────────────────────────────────────────────────
+const tip = document.getElementById("tip");
+let selected = null;
+
+function neighbors(d) {
+  const nbr = new Set([d.id]);
+  data.links.forEach(l => {
+    if (l.source.id === d.id) nbr.add(l.target.id);
+    if (l.target.id === d.id) nbr.add(l.source.id);
+  });
+  return nbr;
+}
+
+function clearSelection() {
+  selected = null;
+  nodeG.classed("selected", false).classed("dimmed", false);
+  link.classed("highlighted", false).classed("dimmed", false);
+  tip.style.opacity = 0;
+}
+
+nodeG.on("click", (e, d) => {
+  e.stopPropagation();
+  if (selected === d.id) { clearSelection(); return; }
+  selected = d.id;
+  const nbr = neighbors(d);
+  nodeG.classed("selected", n => n.id === d.id)
+       .classed("dimmed",   n => !nbr.has(n.id));
+  link.classed("highlighted", l => l.source.id === d.id || l.target.id === d.id)
+      .classed("dimmed",      l => l.source.id !== d.id && l.target.id !== d.id);
+
+  const deps = data.links.filter(l => l.source.id === d.id).map(l => l.target.id);
+  const rdeps = data.links.filter(l => l.target.id === d.id).map(l => l.source.id);
+  tip.innerHTML =
+    `<b>${d.label}</b><br>` +
+    `ID: <code>${d.id}</code><br>` +
+    `Source files: <b>${d.sources}</b>` +
+    (deps.length  ? `<div class="deps">▶ depends on: ${deps.join(", ")}</div>`  : "") +
+    (rdeps.length ? `<div class="deps">◀ used by: ${rdeps.join(", ")}</div>` : "");
+  tip.style.opacity = 1;
+  tip.style.left = (e.pageX + 14) + "px";
+  tip.style.top  = (e.pageY - 20) + "px";
+})
+.on("mousemove", e => {
+  if (selected) {
+    tip.style.left = (e.pageX + 14) + "px";
+    tip.style.top  = (e.pageY - 20) + "px";
+  }
+});
+
+// ── tick ─────────────────────────────────────────────────────────────────────
 sim.on("tick", () => {
-  link.attr("x1",d=>d.source.x).attr("y1",d=>d.source.y)
-      .attr("x2",d=>d.target.x).attr("y2",d=>d.target.y);
-  node.attr("transform",d=>`translate(${d.x},${d.y})`);
+  link
+    .attr("x1", d => d.source.x)
+    .attr("y1", d => d.source.y)
+    .attr("x2", d => { const dx=d.target.x-d.source.x, dy=d.target.y-d.source.y;
+                       const l=Math.sqrt(dx*dx+dy*dy)||1; return d.target.x - dx/l*d.target.radius; })
+    .attr("y2", d => { const dx=d.target.x-d.source.x, dy=d.target.y-d.source.y;
+                       const l=Math.sqrt(dx*dx+dy*dy)||1; return d.target.y - dy/l*d.target.radius; });
+  nodeG.attr("transform", d => `translate(${d.x},${d.y})`);
 });
 </script>
 </body>
