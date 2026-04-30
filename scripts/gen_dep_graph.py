@@ -75,8 +75,24 @@ def count_sources():
 
 # ── Build graph data ─────────────────────────────────────────────────────────
 
+def get_files_per_module():
+    if not os.path.exists(SOURCES_CMAKE):
+        return {}
+    with open(SOURCES_CMAKE) as f:
+        lines = [l.strip().rstrip(")").replace("${VENDOR_DIR}/", "")
+                 for l in f if "${VENDOR_DIR}" in l]
+    result = {}
+    for mod, info in MODULES.items():
+        filt = info["filter"]
+        result[mod] = sorted(
+            os.path.basename(l) for l in lines if filt in l
+        )
+    return result
+
+
 def build_graph():
     src_counts = count_sources()
+    files = get_files_per_module()
     nodes = []
     for mod, info in MODULES.items():
         n = src_counts.get(mod, 0)
@@ -85,6 +101,7 @@ def build_graph():
             "label": info["label"],
             "color": info["color"],
             "sources": n,
+            "files": files.get(mod, []),
             "radius": max(12, min(40, 8 + n // 10)),
         })
     nodes.append({
@@ -92,6 +109,7 @@ def build_graph():
         "label": "simpleFoamExtracted",
         "color": "#e15759",
         "sources": 1,
+        "files": ["simpleFoam.C"],
         "radius": 22,
     })
     links = [{"source": s, "target": t} for s, t in EDGES]
@@ -128,14 +146,48 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   .tooltip .deps { margin-top: 6px; color: #aaa; font-size: 11px; }
   #hint { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%);
     font-size: 11px; color: #444; pointer-events: none; }
+  /* sidebar */
+  #sidebar {
+    position: fixed; top: 0; right: -340px; width: 320px; height: 100vh;
+    background: #16213e; border-left: 1px solid #334; padding: 16px;
+    box-sizing: border-box; transition: right 0.25s ease;
+    display: flex; flex-direction: column; z-index: 10;
+  }
+  #sidebar.open { right: 0; }
+  #sidebar h2 { margin: 0 0 4px; font-size: 1rem; color: #7ecfff; }
+  #sidebar .meta { font-size: 11px; color: #666; margin-bottom: 10px; }
+  #sidebar input {
+    width: 100%; box-sizing: border-box; padding: 6px 10px;
+    background: #0f0f1a; border: 1px solid #334; border-radius: 6px;
+    color: #ddd; font-size: 12px; margin-bottom: 8px;
+  }
+  #sidebar input:focus { outline: none; border-color: #7ecfff; }
+  #file-list {
+    flex: 1; overflow-y: auto; font-size: 11px; font-family: monospace;
+    color: #aaa; line-height: 1.8;
+  }
+  #file-list span { display: block; padding: 1px 4px; border-radius: 3px; }
+  #file-list span:hover { background: #223; color: #fff; }
+  #close-btn {
+    position: absolute; top: 10px; right: 12px; background: none;
+    border: none; color: #555; font-size: 18px; cursor: pointer; line-height: 1;
+  }
+  #close-btn:hover { color: #fff; }
 </style>
 </head>
 <body>
 <h1>simpleFoam_vendored — module dependency graph</h1>
-<p class="sub">Scroll to zoom · drag canvas to pan · click node to highlight · drag node to pin</p>
+<p class="sub">Scroll to zoom · drag to pan · click node to explore · double-click to open file list</p>
 <div class="tooltip" id="tip"></div>
 <svg id="graph"></svg>
-<div id="hint">click anywhere to deselect</div>
+<div id="hint">click background to deselect</div>
+<div id="sidebar">
+  <button id="close-btn" onclick="closeSidebar()">✕</button>
+  <h2 id="sb-title">Module</h2>
+  <div class="meta" id="sb-meta"></div>
+  <input id="sb-search" type="text" placeholder="filter files…" oninput="filterFiles()">
+  <div id="file-list"></div>
+</div>
 <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
 <script>
 const data = GRAPH_DATA;
@@ -238,6 +290,36 @@ nodeG.on("click", (e, d) => {
     tip.style.top  = (e.pageY - 20) + "px";
   }
 });
+
+// ── sidebar ───────────────────────────────────────────────────────────────────
+let sbFiles = [];
+
+function openSidebar(d) {
+  sbFiles = d.files || [];
+  document.getElementById("sb-title").textContent = d.label;
+  document.getElementById("sb-meta").textContent =
+    `${d.id}  ·  ${d.sources} source files`;
+  document.getElementById("sb-search").value = "";
+  renderFiles(sbFiles);
+  document.getElementById("sidebar").classList.add("open");
+}
+
+function closeSidebar() {
+  document.getElementById("sidebar").classList.remove("open");
+}
+
+function renderFiles(files) {
+  const list = document.getElementById("file-list");
+  list.innerHTML = files.map(f => `<span>${f}</span>`).join("");
+}
+
+function filterFiles() {
+  const q = document.getElementById("sb-search").value.toLowerCase();
+  renderFiles(sbFiles.filter(f => f.toLowerCase().includes(q)));
+}
+
+// double-click opens sidebar
+nodeG.on("dblclick", (e, d) => { e.stopPropagation(); openSidebar(d); });
 
 // ── tick ─────────────────────────────────────────────────────────────────────
 sim.on("tick", () => {
