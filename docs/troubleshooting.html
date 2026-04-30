@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>simpleFoam — Troubleshooting</title>
+<style>
+  body { margin: 0; background: #1a1a2e; font-family: sans-serif; color: #ccc;
+         max-width: 860px; margin: 0 auto; padding: 32px 24px 80px; }
+  h1 { color: #7ecfff; font-size: 1.6rem; margin-bottom: 4px; }
+  .nav { font-size: 0.85rem; margin-bottom: 40px; }
+  .nav a { color: #7ecfff; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  h2 { color: #7ecfff; font-size: 1.1rem; border-bottom: 1px solid #334;
+       padding-bottom: 6px; margin-top: 40px; }
+  h3 { color: #aad4f5; font-size: 0.95rem; margin-top: 24px; }
+  p  { line-height: 1.7; font-size: 0.9rem; }
+  code, pre { background: #0f1a2e; border-radius: 4px; font-family: monospace; }
+  code { padding: 1px 5px; color: #ffd; font-size: 0.85em; }
+  pre  { padding: 12px 16px; overflow-x: auto; font-size: 0.82rem;
+         border-left: 3px solid #334; color: #bdf; line-height: 1.6; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.85rem; margin: 12px 0; }
+  th { background: #16213e; color: #7ecfff; padding: 7px 12px; text-align: left; }
+  td { padding: 6px 12px; border-bottom: 1px solid #223; }
+  tr:hover td { background: #16213e; }
+  .tag { display: inline-block; background: #1a3050; color: #7ecfff;
+         border-radius: 4px; padding: 2px 8px; font-size: 0.78rem; margin: 2px; }
+  a { color: #7ecfff; }
+  .toc { background: #16213e; border-radius: 8px; padding: 16px 20px; margin-bottom: 32px; }
+  .toc li { margin: 4px 0; font-size: 0.85rem; }
+  .error-card { background: #16213e; border-radius: 8px; padding: 20px 22px;
+                margin-bottom: 28px; border-left: 4px solid #c0392b; }
+  .error-card h3 { margin-top: 0; color: #ff7a7a; font-size: 0.95rem; }
+  .fix-card { background: #0f2218; border-radius: 0 0 6px 6px; padding: 14px 18px;
+              border-left: 4px solid #27ae60; margin-top: 12px; }
+  .fix-card strong { color: #5dde8e; }
+  .warn-card { background: #1e1a0e; border-radius: 6px; padding: 14px 18px;
+               border-left: 4px solid #f39c12; margin-top: 12px; }
+  .warn-card strong { color: #f1c40f; }
+  .note { background: #16213e; border-left: 4px solid #7ecfff; border-radius: 0 6px 6px 0;
+          padding: 10px 16px; font-size: 0.85rem; margin: 16px 0; }
+  .label { display: inline-block; border-radius: 4px; padding: 2px 9px;
+           font-size: 0.75rem; font-weight: bold; margin-right: 6px; }
+  .label-startup { background: #2c1f6e; color: #aaa4ff; }
+  .label-diverge { background: #4a1a1a; color: #ff9999; }
+  .label-parallel { background: #1a3a1a; color: #88dd88; }
+  .label-mesh { background: #2a2a0e; color: #dddd66; }
+  pre.error { border-left-color: #c0392b; color: #ff9999; }
+  pre.fix   { border-left-color: #27ae60; color: #9dffc0; }
+</style>
+</head>
+<body>
+<h1>simpleFoam — Troubleshooting</h1>
+<div class="nav">
+  <a href="index.html">← dependency graph</a> &nbsp;·&nbsp;
+  <a href="theory.html">theory</a> &nbsp;·&nbsp;
+  <a href="case-setup.html">case setup</a> &nbsp;·&nbsp;
+  <a href="https://github.com/navidofek-cmyk/simpleFoam-vendored">GitHub</a>
+</div>
+
+<div class="toc">
+  <b>Contents</b>
+  <ol>
+    <li><a href="#uncollated">Unknown fileOperationInitialise type uncollated</a></li>
+    <li><a href="#includefunc">Unknown functionEntry 'includeFunc'</a></li>
+    <li><a href="#streamlines">Unknown function type streamlines</a></li>
+    <li><a href="#diverged">SIMPLE solution diverged</a></li>
+    <li><a href="#maxiter">Maximum number of iterations exceeded</a></li>
+    <li><a href="#fpe">Floating point exception</a></li>
+    <li><a href="#mpi">MPI_ABORT in parallel</a></li>
+    <li><a href="#tips">General tips</a></li>
+  </ol>
+</div>
+
+<!-- ============================================================ -->
+<h2>FOAM FATAL ERRORs</h2>
+
+<!-- 1 -->
+<div class="error-card" id="uncollated">
+  <h3><span class="label label-startup">STARTUP</span>Unknown fileOperationInitialise type uncollated</h3>
+  <p>Full error text typically looks like:</p>
+  <pre class="error">FOAM FATAL ERROR:
+Unknown fileOperationInitialise type uncollated
+Valid fileOperationInitialise types are:
+(
+    dummy
+)</pre>
+  <p>
+    <b>Cause:</b> The vendored <code>simpleFoamExtracted</code> binary was linked
+    against a stripped-down build of <code>libOpenFOAM</code> that does not
+    include the <code>uncollatedFileOperation</code> class (or its MPI-aware
+    sibling <code>masterUncollated</code>). The <code>FOAM_FILEHANDLER</code>
+    environment variable or the <code>OptimisationSwitches</code> block in
+    <code>etc/controlDict</code> is requesting a handler that was compiled out.
+  </p>
+  <div class="fix-card">
+    <strong>Fix 1 — unset the environment variable:</strong>
+    <pre class="fix">unset FOAM_FILEHANDLER</pre>
+    <strong>Fix 2 — override at runtime:</strong>
+    <pre class="fix">simpleFoamExtracted -fileHandler uncollated</pre>
+    <p>If neither works, the <code>of_os</code> (OSspecific) shared library was
+    not built with fileOperation support. Rebuild with the full CMake target:</p>
+    <pre class="fix">cmake --build build --target of_os</pre>
+    <strong>Fix 3 — check <code>LD_LIBRARY_PATH</code>:</strong>
+    <p>Make sure <code>libOpenFOAM.so</code> from the vendored build is
+    the first one found, not a system OpenFOAM installation:</p>
+    <pre class="fix">ldd $(which simpleFoamExtracted) | grep OpenFOAM</pre>
+  </div>
+</div>
+
+<!-- 2 -->
+<div class="error-card" id="includefunc">
+  <h3><span class="label label-startup">STARTUP</span>Unknown functionEntry 'includeFunc'</h3>
+  <pre class="error">FOAM FATAL ERROR:
+Unknown functionEntry 'includeFunc'
+Valid functionEntry types:
+(
+    calc
+    code
+    codeStream
+    include
+)</pre>
+  <p>
+    <b>Cause:</b> <code>includeFunc</code> is a macro that expands to a path
+    in <code>$FOAM_ETC/caseDicts/postProcessing/</code>. It requires the full
+    OpenFOAM installation with its function-object dictionaries on disk.
+    <code>simpleFoamExtracted</code> is a vendored binary that does not bundle
+    those data files, so the entry cannot be resolved.
+  </p>
+  <div class="fix-card">
+    <strong>Fix — remove all <code>includeFunc</code> lines from <code>system/controlDict</code>:</strong>
+    <pre class="fix">// REMOVE lines like these from functions{}:
+//   #includeFunc  residuals
+//   #includeFunc  streamlines
+
+// Replace with an empty block:
+functions {};</pre>
+    <p>
+      If you need residual monitoring, parse the log file with the provided
+      <a href="../notebooks/residuals_analysis.ipynb">residuals_analysis notebook</a>
+      instead.
+    </p>
+  </div>
+</div>
+
+<!-- 3 -->
+<div class="error-card" id="streamlines">
+  <h3><span class="label label-startup">STARTUP</span>Unknown function type streamlines</h3>
+  <pre class="error">FOAM FATAL ERROR:
+Unknown functionObject type streamlines
+Valid functionObject types:
+(
+    ...
+)</pre>
+  <p>
+    <b>Cause:</b> The <code>streamlines</code> function object lives in
+    <code>libsampling.so</code>, which is not linked into
+    <code>simpleFoamExtracted</code>. The same applies to
+    <code>probes</code>, <code>surfaces</code>, <code>sets</code>, and other
+    post-processing function objects that depend on the sampling library.
+  </p>
+  <div class="fix-card">
+    <strong>Fix — remove the entry from <code>system/controlDict</code>:</strong>
+    <pre class="fix">// Remove the entire streamlines sub-dictionary:
+// streamlines
+// {
+//     type        streamlines;
+//     ...
+// }
+
+functions {};</pre>
+    <p>
+      Post-processing of velocity streamlines can be done entirely inside
+      ParaView (Filters → Stream Tracer) after the run completes — no
+      in-solver function object is needed.
+    </p>
+  </div>
+</div>
+
+<!-- 4 -->
+<div class="error-card" id="diverged">
+  <h3><span class="label label-diverge">DIVERGENCE</span>SIMPLE solution diverged</h3>
+  <pre class="error">SIMPLE solution diverged after 47 iterations
+ExecutionTime = 12.3 s  ClockTime = 12 s</pre>
+  <p>
+    <b>Cause:</b> The SIMPLE iteration became unstable. This can happen for
+    several reasons: under-relaxation factors too high, poor initial conditions,
+    a bad mesh (high non-orthogonality or skewness), or an aggressive numerical
+    scheme on a coarse mesh.
+  </p>
+  <div class="fix-card">
+    <strong>Primary fix — reduce relaxation factors in <code>system/fvSolution</code>:</strong>
+    <pre class="fix">relaxationFactors
+{
+    fields      { p  0.2; }         // was 0.3
+    equations
+    {
+        U       0.5;                // was 0.7
+        k       0.5;
+        epsilon 0.4;                // epsilon often needs the most damping
+    }
+}</pre>
+    <strong>Secondary fixes:</strong>
+    <ul>
+      <li>
+        Switch convection scheme to pure upwind in <code>system/fvSchemes</code>:
+        <code>div(phi,U) bounded Gauss upwind;</code> — first order but very robust.
+      </li>
+      <li>
+        Start from a better initial condition: run a few iterations with
+        laminar settings, then switch to turbulent.
+      </li>
+      <li>
+        Increase <code>nNonOrthogonalCorrectors</code> to 2–3 in
+        <code>SIMPLE{}</code> if mesh non-orthogonality exceeds 70°.
+      </li>
+      <li>
+        Check that boundary conditions are consistent (e.g., the pressure
+        reference is set at exactly one patch — not zero patches or two).
+      </li>
+    </ul>
+  </div>
+</div>
+
+<!-- 5 -->
+<div class="error-card" id="maxiter">
+  <h3><span class="label label-mesh">CONVERGENCE</span>Maximum number of iterations exceeded</h3>
+  <pre class="error">GAMG:  Solving for p, Initial residual = 0.812, Final residual = 0.731,
+       No Iterations 1000
+FOAM Warning: Maximum number of iterations exceeded</pre>
+  <p>
+    <b>Cause:</b> The linear solver for the pressure (or another field) failed
+    to reduce the residual to the requested <code>tolerance</code> within the
+    iteration limit. This is almost always a mesh quality problem or a
+    misconfigured solver.
+  </p>
+  <div class="fix-card">
+    <strong>Fix 1 — run <code>checkMesh</code> and address quality issues:</strong>
+    <pre class="fix">checkMesh</pre>
+    <p>Look for:</p>
+    <table>
+      <tr><th>Metric</th><th>Acceptable</th><th>Action if exceeded</th></tr>
+      <tr><td>Max non-orthogonality</td><td>&lt; 70°</td><td>Increase <code>nNonOrthogonalCorrectors</code></td></tr>
+      <tr><td>Max skewness</td><td>&lt; 4</td><td>Remesh or use <code>skewness corrected</code> schemes</td></tr>
+      <tr><td>Max aspect ratio</td><td>&lt; 1000</td><td>Reduce grading, especially near walls</td></tr>
+    </table>
+    <strong>Fix 2 — relax the inner solver tolerance:</strong>
+    <pre class="fix">// In fvSolution solvers{} for p:
+relTol   0.05;   // allow early exit relative to initial residual
+tolerance 1e-5;  // don't demand more precision than needed</pre>
+    <strong>Fix 3 — switch p solver to PCG for highly non-orthogonal meshes:</strong>
+    <pre class="fix">p
+{
+    solver          PCG;
+    preconditioner  DIC;
+    tolerance       1e-6;
+    relTol          0.05;
+}</pre>
+  </div>
+</div>
+
+<!-- 6 -->
+<div class="error-card" id="fpe">
+  <h3><span class="label label-diverge">CRASH</span>Floating point exception</h3>
+  <pre class="error">FOAM FATAL ERROR: floating point exception
+Foam::sigFpe::sigFpeHandler(int)
+...
+[stack trace follows]</pre>
+  <p>
+    <b>Cause:</b> A NaN or Inf propagated into a field — typically caused by
+    one of: (a) bad initial conditions that produce negative k or epsilon,
+    (b) a cell with near-zero or negative volume from the mesh, or
+    (c) a physically impossible boundary condition (e.g., negative inlet k).
+  </p>
+  <div class="fix-card">
+    <strong>Fix 1 — check initial conditions are physically valid:</strong>
+    <pre class="fix">// k must be > 0 everywhere
+// epsilon must be > 0 everywhere
+// U should be a reasonable non-zero field if using turbulent BCs
+
+// Quick sanity: k = 1.5*(I*Uref)^2, I=0.05, Uref=1 m/s
+// k = 1.5 * (0.05)^2 = 3.75e-3  (OK)
+// epsilon = Cmu^0.75 * k^1.5 / L,  L~0.07  =>  ~7e-4  (OK)</pre>
+    <strong>Fix 2 — check the mesh for zero-volume or negative-volume cells:</strong>
+    <pre class="fix">checkMesh
+// Look for: "FOAM FATAL ERROR: face ... has zero area"
+// or:       "Negative cell volumes"</pre>
+    <strong>Fix 3 — enable bounds checking in <code>system/fvSolution</code>:</strong>
+    <pre class="fix">// Add to SIMPLE{} to clip k and epsilon to positive values:
+SIMPLE
+{
+    ...
+}
+// or add to the field solver:
+k       { solver smoothSolver; ... minIter 1; }
+// Set field limits in 0/k:
+// bounds  ( 1e-15  1e+8 );</pre>
+    <strong>Fix 4 — reduce relaxation factors dramatically as a diagnostic step:</strong>
+    <pre class="fix">relaxationFactors { fields { p 0.1; } equations { U 0.3; k 0.3; epsilon 0.2; } }</pre>
+    <div class="warn-card">
+      <strong>Warning:</strong> if the FPE occurs on iteration 1, the problem
+      is almost always in the initial conditions or the mesh, not in the
+      relaxation. Fix those first.
+    </div>
+  </div>
+</div>
+
+<!-- 7 -->
+<div class="error-card" id="mpi">
+  <h3><span class="label label-parallel">PARALLEL</span>MPI_ABORT called in parallel run</h3>
+  <pre class="error">FOAM FATAL ERROR (on master):
+decomposition of mesh does not match number of processors
+nProcs = 4  nDomains = 6
+
+[mpirun] MPI_ABORT was invoked ...
+aborting MPI_COMM_WORLD (comm=0x44000000), error 1</pre>
+  <p>
+    <b>Cause:</b> A mismatch between the number of MPI ranks requested
+    (<code>mpirun -np N</code>) and the number of subdomains defined in
+    <code>system/decomposeParDict</code> (the <code>numberOfSubdomains</code>
+    key). Both must be identical.
+  </p>
+  <div class="fix-card">
+    <strong>Fix — synchronise <code>decomposeParDict</code> and <code>-np</code>:</strong>
+    <pre class="fix">// system/decomposeParDict
+numberOfSubdomains  4;          // must equal -np value
+method              scotch;     // or simple / hierarchical
+
+// Run command must match:
+mpirun -np 4 simpleFoamExtracted -parallel</pre>
+    <strong>Other common parallel errors and their causes:</strong>
+    <table>
+      <tr><th>Error</th><th>Likely cause</th></tr>
+      <tr><td><code>Cannot open file "processor0/..."</code></td><td><code>decomposePar</code> was not run, or was run with different <code>-np</code></td></tr>
+      <tr><td><code>Pstream::init: MPI_Init returns error</code></td><td>MPI runtime not installed or <code>libmpi.so</code> not in <code>LD_LIBRARY_PATH</code></td></tr>
+      <tr><td>Hang at startup with no output</td><td>Firewall blocking MPI inter-process communication on localhost</td></tr>
+      <tr><td><code>inconsistent patch sizes</code></td><td>Old <code>processor*/</code> directories from a previous decomposition — delete and re-run <code>decomposePar</code></td></tr>
+    </table>
+    <strong>Clean parallel directories before redecomposing:</strong>
+    <pre class="fix">rm -rf processor*
+decomposePar
+mpirun -np 4 simpleFoamExtracted -parallel 2>&amp;1 | tee log.txt</pre>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="tips">General debugging tips</h2>
+
+<h3>1. Check residuals first</h3>
+<p>
+  Before guessing at the cause of a failure, plot the residuals. A sudden jump
+  to <code>NaN</code> points to a physical/mesh problem; a slow plateau that
+  never drops points to a solver configuration issue.
+</p>
+<pre># Quick grep to see worst residuals per field:
+grep "Initial residual" log.txt | awk '{print $NF, $0}' | sort -n | tail -20</pre>
+<p>
+  For a full time-series plot, use the
+  <a href="../notebooks/residuals_analysis.ipynb">residuals_analysis notebook</a>.
+</p>
+
+<h3>2. Validate mesh quality with <code>checkMesh</code></h3>
+<pre>checkMesh 2>&amp;1 | tee log.checkMesh</pre>
+<p>Key numbers to watch:</p>
+<table>
+  <tr><th>Metric</th><th>Target</th><th>Hard limit</th></tr>
+  <tr><td>Max non-orthogonality</td><td>&lt; 50°</td><td>70° (above: add correctors)</td></tr>
+  <tr><td>Average non-orthogonality</td><td>&lt; 20°</td><td>40°</td></tr>
+  <tr><td>Max skewness</td><td>&lt; 2</td><td>4 (above: likely divergence)</td></tr>
+  <tr><td>Minimum face area</td><td>&gt; 0</td><td>Must be positive</td></tr>
+  <tr><td>Minimum cell volume</td><td>&gt; 0</td><td>Must be positive</td></tr>
+</table>
+
+<h3>3. Start simple, increase complexity</h3>
+<p>
+  If a case won't converge, strip it down: switch to laminar
+  (<code>simulationType laminar</code>), use pure upwind schemes, and halve all
+  relaxation factors. Once that converges, reintroduce turbulence and better
+  schemes one at a time.
+</p>
+
+<h3>4. Use <code>foamLog</code> to extract residuals (if full OF is available)</h3>
+<pre>foamLog log.txt
+# writes logs/Ux_0, logs/p_0, etc. — tab-separated time/residual pairs</pre>
+
+<h3>5. Inspect the first iteration in detail</h3>
+<p>
+  Set <code>endTime 1</code> in <code>controlDict</code> and
+  <code>writeInterval 1</code>. Then load the single time-step in ParaView
+  and check for obvious anomalies (reversed flow, pressure oscillations,
+  negative k) before running to convergence.
+</p>
+
+<h3>6. Common residual convergence patterns</h3>
+<table>
+  <tr><th>Pattern</th><th>Likely cause</th><th>Action</th></tr>
+  <tr><td>All residuals plateau at ~0.1</td><td>Relaxation too heavy, SIMPLEC not enabled</td><td>Enable <code>consistent yes</code>, raise α to 0.9/0.7</td></tr>
+  <tr><td>p residual stagnates, U converges</td><td>Pressure BC not set (no fixedValue patch)</td><td>Add <code>fixedValue 0</code> on outlet</td></tr>
+  <tr><td>k/epsilon grow instead of falling</td><td>Wall functions mismatch y+</td><td>Check y+ in ParaView; use <code>nutWallFunction</code></td></tr>
+  <tr><td>Oscillating residuals, not converging</td><td>Steady-state assumption invalid (shedding, separation)</td><td>Consider unsteady solver (pisoFoam / pimpleFoam)</td></tr>
+  <tr><td>Sudden spike then NaN</td><td>FPE — bad mesh cell or extreme initial field</td><td>See <a href="#fpe">Floating point exception</a> section</td></tr>
+</table>
+</body>
+</html>

@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>simpleFoam — Case Setup</title>
+<style>
+  body { margin: 0; background: #1a1a2e; font-family: sans-serif; color: #ccc;
+         max-width: 860px; margin: 0 auto; padding: 32px 24px 80px; }
+  h1 { color: #7ecfff; font-size: 1.6rem; margin-bottom: 4px; }
+  .nav { font-size: 0.85rem; margin-bottom: 40px; }
+  .nav a { color: #7ecfff; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  h2 { color: #7ecfff; font-size: 1.1rem; border-bottom: 1px solid #334;
+       padding-bottom: 6px; margin-top: 40px; }
+  h3 { color: #aad4f5; font-size: 0.95rem; margin-top: 24px; }
+  p  { line-height: 1.7; font-size: 0.9rem; }
+  code, pre { background: #0f1a2e; border-radius: 4px; font-family: monospace; }
+  code { padding: 1px 5px; color: #ffd; font-size: 0.85em; }
+  pre  { padding: 12px 16px; overflow-x: auto; font-size: 0.82rem;
+         border-left: 3px solid #334; color: #bdf; line-height: 1.6; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.85rem; margin: 12px 0; }
+  th { background: #16213e; color: #7ecfff; padding: 7px 12px; text-align: left; }
+  td { padding: 6px 12px; border-bottom: 1px solid #223; }
+  tr:hover td { background: #16213e; }
+  .tag { display: inline-block; background: #1a3050; color: #7ecfff;
+         border-radius: 4px; padding: 2px 8px; font-size: 0.78rem; margin: 2px; }
+  .file-card { background: #16213e; border-radius: 8px; padding: 18px 20px;
+               margin-bottom: 24px; border-left: 4px solid #334; }
+  .file-card h3 { margin-top: 0; color: #7ecfff; }
+  .file-card .path { font-family: monospace; font-size: 0.82rem; color: #ffd;
+                     background: #0f1a2e; padding: 2px 8px; border-radius: 4px; }
+  a { color: #7ecfff; }
+  .toc { background: #16213e; border-radius: 8px; padding: 16px 20px; margin-bottom: 32px; }
+  .toc li { margin: 4px 0; font-size: 0.85rem; }
+  .dir-tree { background: #0f1a2e; border-radius: 6px; padding: 16px 20px;
+              font-family: monospace; font-size: 0.85rem; color: #bdf;
+              line-height: 1.8; border-left: 3px solid #334; }
+  .dir-tree .dir { color: #7ecfff; }
+  .dir-tree .req { color: #ffd; }
+  .note { background: #16213e; border-left: 4px solid #7ecfff; border-radius: 0 6px 6px 0;
+          padding: 10px 16px; font-size: 0.85rem; margin: 16px 0; }
+  .cmd { background: #0a1628; border: 1px solid #334; border-radius: 6px;
+         padding: 12px 18px; font-family: monospace; font-size: 0.9rem;
+         color: #7ecfff; margin: 12px 0; }
+</style>
+</head>
+<body>
+<h1>simpleFoam — Case Setup</h1>
+<div class="nav">
+  <a href="index.html">← dependency graph</a> &nbsp;·&nbsp;
+  <a href="theory.html">theory</a> &nbsp;·&nbsp;
+  <a href="troubleshooting.html">troubleshooting</a> &nbsp;·&nbsp;
+  <a href="https://github.com/navidofek-cmyk/simpleFoam-vendored">GitHub</a>
+</div>
+
+<div class="toc">
+  <b>Contents</b>
+  <ol>
+    <li><a href="#structure">Case directory structure</a></li>
+    <li><a href="#files">Required files explained</a></li>
+    <li><a href="#example">Example: simple channel flow</a></li>
+    <li><a href="#params">Key parameters</a></li>
+    <li><a href="#run">How to run</a></li>
+  </ol>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="structure">Case directory structure</h2>
+<p>
+  Every OpenFOAM case — whether using the stock solver or
+  <code>simpleFoamExtracted</code> — follows the same three-directory layout.
+  The solver discovers all settings by walking this tree at startup; nothing is
+  hard-coded inside the binary.
+</p>
+<div class="dir-tree">
+<span class="dir">myCase/</span><br>
+├── <span class="dir">0/</span>                  <span style="color:#555"># initial &amp; boundary conditions (time = 0)</span><br>
+│   ├── <span class="req">U</span>               <span style="color:#555"># velocity field</span><br>
+│   ├── <span class="req">p</span>               <span style="color:#555"># kinematic pressure (p/ρ, units m²/s²)</span><br>
+│   ├── <span class="req">k</span>               <span style="color:#555"># turbulent kinetic energy</span><br>
+│   ├── <span class="req">epsilon</span>         <span style="color:#555"># turbulent dissipation rate  (k-ε)</span><br>
+│   └── <span style="color:#aaa">nuTilda</span>         <span style="color:#555"># modified viscosity            (S-A)</span><br>
+├── <span class="dir">constant/</span>          <span style="color:#555"># time-invariant case data</span><br>
+│   ├── <span class="req">physicalProperties</span>  <span style="color:#555"># kinematic viscosity ν</span><br>
+│   ├── <span class="req">turbulenceProperties</span> <span style="color:#555"># turbulence model selector</span><br>
+│   └── <span class="dir">polyMesh/</span>      <span style="color:#555"># mesh (created by blockMesh)</span><br>
+│       ├── points<br>
+│       ├── faces<br>
+│       ├── owner<br>
+│       ├── neighbour<br>
+│       └── boundary<br>
+└── <span class="dir">system/</span>            <span style="color:#555"># solver control files</span><br>
+    ├── <span class="req">controlDict</span>     <span style="color:#555"># run control, time, I/O</span><br>
+    ├── <span class="req">fvSchemes</span>       <span style="color:#555"># numerical discretisation schemes</span><br>
+    ├── <span class="req">fvSolution</span>      <span style="color:#555"># linear solvers &amp; relaxation</span><br>
+    └── <span class="req">blockMeshDict</span>   <span style="color:#555"># mesh geometry definition</span><br>
+</div>
+
+<div class="note">
+  The three top-level directories are mandatory. OpenFOAM refuses to start if
+  <code>system/controlDict</code>, <code>constant/physicalProperties</code>, or
+  <code>constant/turbulenceProperties</code> are missing.
+</div>
+
+<!-- ============================================================ -->
+<h2 id="files">Required files explained</h2>
+
+<div class="file-card" style="border-left-color:#4e79a7">
+  <h3><span class="path">system/controlDict</span></h3>
+  <p>
+    Master run-control dictionary. Tells the solver how long to run, how often
+    to write results, and which optional function objects to activate (residual
+    monitors, sampling, probes).
+  </p>
+  <table>
+    <tr><th>Key</th><th>Typical value</th><th>Meaning</th></tr>
+    <tr><td><code>application</code></td><td><code>simpleFoam</code></td><td>Identifies the solver (informational only)</td></tr>
+    <tr><td><code>startFrom</code></td><td><code>startTime</code></td><td>Start from the time named in <code>startTime</code></td></tr>
+    <tr><td><code>startTime</code></td><td><code>0</code></td><td>Initial time directory to read</td></tr>
+    <tr><td><code>stopAt</code></td><td><code>endTime</code></td><td>Stop when <code>endTime</code> is reached</td></tr>
+    <tr><td><code>endTime</code></td><td><code>500</code></td><td>Number of SIMPLE iterations</td></tr>
+    <tr><td><code>deltaT</code></td><td><code>1</code></td><td>Pseudo-time step (always 1 for steady SIMPLE)</td></tr>
+    <tr><td><code>writeControl</code></td><td><code>timeStep</code></td><td>Write every N iterations</td></tr>
+    <tr><td><code>writeInterval</code></td><td><code>50</code></td><td>N iterations between writes</td></tr>
+    <tr><td><code>runTimeModifiable</code></td><td><code>true</code></td><td>Re-read dicts each iteration (live editing)</td></tr>
+  </table>
+  <p>
+    Keep the <code>functions{}</code> sub-dictionary empty (or remove it
+    entirely) when running <code>simpleFoamExtracted</code>, because the
+    vendored build omits the sampling and streamlines libraries — any
+    <code>includeFunc</code> or <code>streamlines</code> entry will cause a
+    fatal error at startup.
+  </p>
+</div>
+
+<div class="file-card" style="border-left-color:#f28e2b">
+  <h3><span class="path">system/fvSolution</span></h3>
+  <p>
+    Configures the linear algebra solvers for each field and the SIMPLE
+    algorithm's under-relaxation factors. This file has the largest impact on
+    convergence speed and stability.
+  </p>
+  <table>
+    <tr><th>Sub-dictionary</th><th>Purpose</th></tr>
+    <tr><td><code>solvers{}</code></td><td>One entry per field: which iterative solver + preconditioner to use</td></tr>
+    <tr><td><code>SIMPLE{}</code></td><td>Convergence tolerance and residual-control switches</td></tr>
+    <tr><td><code>relaxationFactors{}</code></td><td>Under-relaxation for fields and equations</td></tr>
+  </table>
+  <p>
+    Recommended solver choices: <b>GAMG</b> (geometric-algebraic multi-grid)
+    for pressure because the elliptic pressure equation benefits most from
+    multigrid; <b>smoothSolver</b> with GaussSeidel for the convection-dominated
+    momentum and turbulence equations.
+  </p>
+</div>
+
+<div class="file-card" style="border-left-color:#59a14f">
+  <h3><span class="path">system/fvSchemes</span></h3>
+  <p>
+    Selects the numerical approximation scheme for every spatial and temporal
+    operator that appears in the governing equations.
+  </p>
+  <table>
+    <tr><th>Sub-dictionary</th><th>Operators covered</th></tr>
+    <tr><td><code>ddtSchemes</code></td><td>Time derivative <code>∂/∂t</code> (use <code>steadyState</code> for SIMPLE)</td></tr>
+    <tr><td><code>gradSchemes</code></td><td>Gradient <code>∇</code> — Gauss linear is standard</td></tr>
+    <tr><td><code>divSchemes</code></td><td>Divergence / convection — linearUpwind for U, upwind for k/ε</td></tr>
+    <tr><td><code>laplacianSchemes</code></td><td>Diffusion — Gauss linear corrected</td></tr>
+    <tr><td><code>interpolationSchemes</code></td><td>Face interpolation — linear</td></tr>
+    <tr><td><code>snGradSchemes</code></td><td>Surface-normal gradient — corrected</td></tr>
+  </table>
+</div>
+
+<div class="file-card" style="border-left-color:#edc948">
+  <h3><span class="path">system/blockMeshDict</span></h3>
+  <p>
+    Defines the mesh using structured hexahedral blocks. The workflow is:
+    declare vertices in 3-D space, connect them into blocks specifying the cell
+    count in each direction and a grading ratio, then name the boundary patches.
+    <code>blockMesh</code> reads this file and writes the resulting
+    <code>constant/polyMesh/</code> directory.
+  </p>
+  <p>
+    Grading lets you cluster cells near walls (small <code>y⁺</code>) without
+    exploding the total cell count. A grading of <code>4</code> means the last
+    cell is 4× the size of the first cell along that direction.
+  </p>
+</div>
+
+<div class="file-card" style="border-left-color:#b07aa1">
+  <h3><span class="path">constant/turbulenceProperties</span></h3>
+  <p>
+    Selects the turbulence modelling approach. The two top-level keys are
+    <code>simulationType</code> (<code>RAS</code>, <code>LES</code>, or
+    <code>laminar</code>) and the nested model dictionary.
+  </p>
+  <p>Common choices for RANS:</p>
+  <table>
+    <tr><th>Model</th><th>Required fields in <code>0/</code></th><th>Notes</th></tr>
+    <tr><td><code>kEpsilon</code></td><td>k, epsilon</td><td>Robust, good for free shear flows</td></tr>
+    <tr><td><code>kOmegaSST</code></td><td>k, omega</td><td>Better near walls, adverse pressure gradients</td></tr>
+    <tr><td><code>SpalartAllmaras</code></td><td>nuTilda</td><td>One equation, low overhead</td></tr>
+  </table>
+</div>
+
+<div class="file-card" style="border-left-color:#76b7b2">
+  <h3><span class="path">constant/physicalProperties</span></h3>
+  <p>
+    Specifies the fluid's physical properties. For incompressible flow the only
+    required entry is the kinematic viscosity <code>nu</code>
+    (m²/s). The viscosity model type is also declared here — <code>Newtonian</code>
+    for a constant-viscosity fluid.
+  </p>
+  <p>
+    Note: older OpenFOAM versions used
+    <code>constant/transportProperties</code> with the key <code>nu</code>
+    directly. OpenFOAM 9+ renamed the file to <code>physicalProperties</code>
+    and added the <code>viscosityModel</code> wrapper.
+  </p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="example">Example: simple channel flow</h2>
+<p>
+  A 2-D plane channel, 10 m long × 1 m tall, driven by a fixed inlet velocity
+  of 1 m/s, Reynolds number ≈ 10 000 using k-ε turbulence.
+</p>
+
+<h3>system/blockMeshDict</h3>
+<pre>FoamFile { version 2.0; format ascii; class dictionary; object blockMeshDict; }
+
+scale   1;
+
+vertices
+(
+    (  0   0  0 )   // 0
+    ( 10   0  0 )   // 1
+    ( 10   1  0 )   // 2
+    (  0   1  0 )   // 3
+    (  0   0  0.1 ) // 4
+    ( 10   0  0.1 ) // 5
+    ( 10   1  0.1 ) // 6
+    (  0   1  0.1 ) // 7
+);
+
+blocks
+(
+    // hex (v0 v1 v2 v3 v4 v5 v6 v7) (nx ny nz) simpleGrading (gx gy gz)
+    hex (0 1 2 3 4 5 6 7) (200 40 1) simpleGrading (1 4 1)
+    //                                                   ^-- cluster near bottom wall
+);
+
+edges ();
+
+boundary
+(
+    inlet
+    {
+        type patch;
+        faces ( (0 4 7 3) );
+    }
+    outlet
+    {
+        type patch;
+        faces ( (1 2 6 5) );
+    }
+    bottomWall
+    {
+        type wall;
+        faces ( (0 1 5 4) );
+    }
+    topWall
+    {
+        type wall;
+        faces ( (3 7 6 2) );
+    }
+    frontAndBack
+    {
+        type empty;                 // 2-D: no flux in z-direction
+        faces ( (0 3 2 1) (4 5 6 7) );
+    }
+);</pre>
+
+<h3>system/controlDict</h3>
+<pre>FoamFile { version 2.0; format ascii; class dictionary; object controlDict; }
+
+application     simpleFoam;
+
+startFrom       startTime;
+startTime       0;
+stopAt          endTime;
+endTime         500;
+deltaT          1;
+
+writeControl    timeStep;
+writeInterval   50;
+purgeWrite      3;               // keep only last 3 time directories
+
+runTimeModifiable true;
+
+functions {}                     // keep empty — sampling libs not vendored</pre>
+
+<h3>system/fvSchemes</h3>
+<pre>FoamFile { version 2.0; format ascii; class dictionary; object fvSchemes; }
+
+ddtSchemes      { default steadyState; }
+
+gradSchemes
+{
+    default         Gauss linear;
+    grad(U)         cellLimited Gauss linear 1;
+}
+
+divSchemes
+{
+    default         none;
+    div(phi,U)      bounded Gauss linearUpwind grad(U);
+    div(phi,k)      bounded Gauss upwind;
+    div(phi,epsilon) bounded Gauss upwind;
+    div((nuEff*dev(T(grad(U))))) Gauss linear;
+}
+
+laplacianSchemes { default Gauss linear corrected; }
+
+interpolationSchemes { default linear; }
+
+snGradSchemes   { default corrected; }
+
+fluxRequired    { default no; p ; }</pre>
+
+<h3>system/fvSolution</h3>
+<pre>FoamFile { version 2.0; format ascii; class dictionary; object fvSolution; }
+
+solvers
+{
+    p
+    {
+        solver          GAMG;
+        smoother        GaussSeidel;
+        tolerance       1e-6;
+        relTol          0.1;
+    }
+
+    U
+    {
+        solver          smoothSolver;
+        smoother        GaussSeidel;
+        tolerance       1e-8;
+        relTol          0.1;
+        nSweeps         1;
+    }
+
+    k
+    {
+        solver          smoothSolver;
+        smoother        GaussSeidel;
+        tolerance       1e-8;
+        relTol          0.1;
+        nSweeps         1;
+    }
+
+    epsilon
+    {
+        solver          smoothSolver;
+        smoother        GaussSeidel;
+        tolerance       1e-8;
+        relTol          0.1;
+        nSweeps         1;
+    }
+}
+
+SIMPLE
+{
+    nNonOrthogonalCorrectors 0;
+    consistent      yes;         // SIMPLEC variant — faster convergence
+
+    residualControl
+    {
+        p               1e-4;
+        U               1e-4;
+        k               1e-4;
+        epsilon         1e-4;
+    }
+}
+
+relaxationFactors
+{
+    fields  { p 0.3; }
+    equations
+    {
+        U       0.7;
+        k       0.7;
+        epsilon 0.7;
+    }
+}</pre>
+
+<h3>constant/physicalProperties</h3>
+<pre>FoamFile { version 2.0; format ascii; class dictionary; object physicalProperties; }
+
+viscosityModel  Newtonian;
+
+nu              1e-4;            // kinematic viscosity [m^2/s]
+                                 // Re = U*H/nu = 1*1/1e-4 = 10 000</pre>
+
+<h3>constant/turbulenceProperties</h3>
+<pre>FoamFile { version 2.0; format ascii; class dictionary; object turbulenceProperties; }
+
+simulationType  RAS;
+
+RAS
+{
+    RASModel        kEpsilon;
+    turbulence      on;
+    printCoeffs     on;
+}</pre>
+
+<h3>0/U — velocity initial &amp; boundary conditions</h3>
+<pre>FoamFile { version 2.0; format ascii; class volVectorField; object U; }
+
+dimensions      [0 1 -1 0 0 0 0];   // m/s
+
+internalField   uniform (1 0 0);
+
+boundaryField
+{
+    inlet       { type fixedValue;      value uniform (1 0 0); }
+    outlet      { type zeroGradient; }
+    bottomWall  { type noSlip; }
+    topWall     { type noSlip; }
+    frontAndBack { type empty; }
+}</pre>
+
+<h3>0/p — pressure</h3>
+<pre>FoamFile { version 2.0; format ascii; class volScalarField; object p; }
+
+dimensions      [0 2 -2 0 0 0 0];   // m^2/s^2 (kinematic)
+
+internalField   uniform 0;
+
+boundaryField
+{
+    inlet       { type zeroGradient; }
+    outlet      { type fixedValue;  value uniform 0; }
+    bottomWall  { type zeroGradient; }
+    topWall     { type zeroGradient; }
+    frontAndBack { type empty; }
+}</pre>
+
+<h3>0/k — turbulent kinetic energy</h3>
+<pre>FoamFile { version 2.0; format ascii; class volScalarField; object k; }
+
+dimensions      [0 2 -2 0 0 0 0];
+
+// k = 1.5*(I*U)^2,  I = 0.05 (5% turbulence intensity)
+internalField   uniform 3.75e-3;
+
+boundaryField
+{
+    inlet       { type turbulentIntensityKineticEnergyInlet;
+                  intensity 0.05; value uniform 3.75e-3; }
+    outlet      { type zeroGradient; }
+    bottomWall  { type kqRWallFunction; value uniform 3.75e-3; }
+    topWall     { type kqRWallFunction; value uniform 3.75e-3; }
+    frontAndBack { type empty; }
+}</pre>
+
+<h3>0/epsilon — turbulent dissipation</h3>
+<pre>FoamFile { version 2.0; format ascii; class volScalarField; object epsilon; }
+
+dimensions      [0 2 -3 0 0 0 0];
+
+// epsilon = Cmu^0.75 * k^1.5 / L,  L = 0.07*H = 0.07
+internalField   uniform 7.18e-4;
+
+boundaryField
+{
+    inlet       { type turbulentMixingLengthDissipationRateInlet;
+                  mixingLength 0.07; value uniform 7.18e-4; }
+    outlet      { type zeroGradient; }
+    bottomWall  { type epsilonWallFunction; value uniform 7.18e-4; }
+    topWall     { type epsilonWallFunction; value uniform 7.18e-4; }
+    frontAndBack { type empty; }
+}</pre>
+
+<!-- ============================================================ -->
+<h2 id="params">Key parameters</h2>
+
+<h3>Under-relaxation factors</h3>
+<p>
+  Under-relaxation damps updates between iterations to prevent divergence of
+  the non-linear system. Lower values = more stable but slower convergence.
+</p>
+<table>
+  <tr><th>Field / equation</th><th>Typical α</th><th>Notes</th></tr>
+  <tr><td><code>p</code> (field)</td><td>0.3</td><td>Pressure needs heavy damping — SIMPLE's weakest coupling</td></tr>
+  <tr><td><code>U</code> (equation)</td><td>0.7</td><td>Standard; reduce to 0.5 if diverging</td></tr>
+  <tr><td><code>k</code> (equation)</td><td>0.7</td><td>Same as U</td></tr>
+  <tr><td><code>epsilon</code> (equation)</td><td>0.7</td><td>Can be reduced to 0.5 for stiff problems</td></tr>
+  <tr><td>SIMPLEC <code>p</code></td><td>0.9</td><td>SIMPLEC allows higher p relaxation</td></tr>
+</table>
+<div class="note">
+  Rule of thumb: <code>α_U + α_p ≈ 1.0</code>. Increase both by 0.1 once
+  residuals enter the drop phase to speed up final convergence.
+</div>
+
+<h3>Linear solvers</h3>
+<table>
+  <tr><th>Solver</th><th>Best for</th><th>Key settings</th></tr>
+  <tr><td><code>GAMG</code></td><td>Pressure (p) — elliptic, smooth error modes</td><td><code>smoother GaussSeidel</code>, <code>relTol 0.1</code></td></tr>
+  <tr><td><code>smoothSolver</code></td><td>U, k, epsilon — convection dominated</td><td><code>smoother GaussSeidel</code>, <code>nSweeps 1</code></td></tr>
+  <tr><td><code>PCG</code></td><td>Symmetric systems (p on simple meshes)</td><td><code>preconditioner DIC</code></td></tr>
+  <tr><td><code>PBiCGStab</code></td><td>Asymmetric systems (U)</td><td><code>preconditioner DILU</code></td></tr>
+</table>
+<p>
+  The <code>relTol</code> key sets the relative (inner-iteration) tolerance.
+  Setting it to <code>0</code> forces the solver to reach the absolute
+  <code>tolerance</code> each SIMPLE step — expensive but useful for debugging
+  convergence issues.
+</p>
+
+<h3>Convergence criteria</h3>
+<p>
+  <code>SIMPLE/residualControl</code> defines the outer-loop stopping criterion.
+  The solver checks the <em>initial residual</em> of each field reported by the
+  linear solver (not the field change). Typical targets:
+</p>
+<table>
+  <tr><th>Field</th><th>Engineering accuracy</th><th>High accuracy</th></tr>
+  <tr><td>p</td><td>1e-3</td><td>1e-5</td></tr>
+  <tr><td>U</td><td>1e-4</td><td>1e-6</td></tr>
+  <tr><td>k, epsilon</td><td>1e-4</td><td>1e-5</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="run">How to run</h2>
+<p>
+  With <code>simpleFoamExtracted</code> built and the case directory set up,
+  the full run sequence is:
+</p>
+
+<div class="cmd">cd myCase</div>
+<div class="cmd">blockMesh</div>
+<p>
+  <code>blockMesh</code> reads <code>system/blockMeshDict</code> and writes the
+  mesh to <code>constant/polyMesh/</code>. Check the final line — it should
+  report the number of cells and zero errors.
+</p>
+
+<div class="cmd">simpleFoamExtracted 2&gt;&amp;1 | tee log.txt</div>
+<p>
+  Redirect both stdout and stderr into <code>log.txt</code> so residuals can be
+  post-processed later. The <code>tee</code> command lets you watch progress in
+  the terminal at the same time.
+</p>
+<p>
+  To run in parallel (requires MPI and a <code>system/decomposeParDict</code>):
+</p>
+<div class="cmd">decomposePar &amp;&amp; mpirun -np 4 simpleFoamExtracted -parallel 2&gt;&amp;1 | tee log.txt</div>
+
+<h3>Typical log output</h3>
+<pre>smoothSolver:  Solving for Ux, Initial residual = 0.512, Final residual = 0.0421, No Iterations 3
+smoothSolver:  Solving for Uy, Initial residual = 0.234, Final residual = 0.0182, No Iterations 3
+GAMG:  Solving for p, Initial residual = 0.812, Final residual = 0.0723, No Iterations 6
+smoothSolver:  Solving for k, Initial residual = 0.643, Final residual = 0.0512, No Iterations 3
+smoothSolver:  Solving for epsilon, Initial residual = 0.701, Final residual = 0.0601, No Iterations 3
+ExecutionTime = 1.23 s  ClockTime = 1 s
+
+...
+
+smoothSolver:  Solving for Ux, Initial residual = 8.12e-05, Final residual = 6.34e-06, No Iterations 5
+GAMG:  Solving for p, Initial residual = 1.23e-04, Final residual = 9.81e-06, No Iterations 4
+SIMPLE solution converged in 387 iterations</pre>
+
+<h3>Post-processing in ParaView</h3>
+<p>
+  Create an empty file named <code>myCase.foam</code> in the case directory,
+  then open it with ParaView. The OpenFOAM reader will discover all time
+  directories automatically.
+</p>
+<div class="cmd">touch myCase.foam &amp;&amp; paraview myCase.foam</div>
+</body>
+</html>

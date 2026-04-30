@@ -5,8 +5,11 @@
 Build **simpleFoam without OpenFOAM installed on the host**.  
 All required OpenFOAM-10 sources are vendored into this repo and compiled via CMake inside a clean Ubuntu 22.04 container.
 
-**[Interactive dependency graph →](https://navidofek-cmyk.github.io/simpleFoam-vendored/)**  
+**[Dependency graph →](https://navidofek-cmyk.github.io/simpleFoam-vendored/)**  
 **[Theory →](https://navidofek-cmyk.github.io/simpleFoam-vendored/theory.html)**  
+**[Case setup guide →](https://navidofek-cmyk.github.io/simpleFoam-vendored/case-setup.html)**  
+**[Troubleshooting →](https://navidofek-cmyk.github.io/simpleFoam-vendored/troubleshooting.html)**  
+**[Residuals notebook →](notebooks/residuals_analysis.ipynb)**  
 **[Pre-built image →](https://ghcr.io/navidofek-cmyk/simplefoam-vendored-build)**
 
 > **Enable GitHub Pages:** repo → Settings → Pages → Branch: `master` / folder: `/docs` → Save

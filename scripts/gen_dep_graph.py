@@ -377,7 +377,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 </head>
 <body>
 <h1>simpleFoam_vendored — module dependency graph</h1>
-<p class="sub">Scroll to zoom · drag to pan · click node to highlight · double-click for theory &amp; files &nbsp;|&nbsp; <a href="theory.html" style="color:#7ecfff">Theory →</a></p>
+<p class="sub">Scroll to zoom · drag to pan · click node to highlight · double-click for theory &amp; files &nbsp;|&nbsp; <a href="theory.html" style="color:#7ecfff">Theory</a> · <a href="case-setup.html" style="color:#7ecfff">Case setup</a> · <a href="troubleshooting.html" style="color:#7ecfff">Troubleshooting</a></p>
 <div class="tooltip" id="tip"></div>
 <svg id="graph"></svg>
 <div id="hint">click background to deselect</div>
