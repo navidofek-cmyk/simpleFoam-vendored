@@ -1,0 +1,113 @@
+name: Build & Test
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - 'CMakeLists.txt'
+      - 'Dockerfile.build'
+      - 'vendor/**'
+      - 'solver/**'
+  pull_request:
+    branches: [master, main]
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Cache Docker layers
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ hashFiles('Dockerfile.build', 'CMakeLists.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
+
+      - name: Build solver image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.build
+          tags: simplefoam-vendored-build:latest
+          load: true
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+
+      - name: Move cache
+        run: |
+          rm -rf /tmp/.buildx-cache
+          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+
+      - name: Extract binary
+        run: |
+          docker create --name tmp simplefoam-vendored-build:latest
+          docker cp tmp:/build/build/simpleFoamExtracted ./simpleFoamExtracted
+          docker rm tmp
+          ls -lh simpleFoamExtracted
+
+      - name: Build OF base image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.base
+          tags: openfoam10-base:latest
+          load: true
+
+      - name: Test — pitzDaily serial
+        run: |
+          docker build --no-cache -f - -t test-serial . << 'EOF'
+          FROM simplefoam-vendored-build:latest AS binary
+          FROM openfoam10-base:latest AS runner
+          COPY --from=binary /build/build/simpleFoamExtracted /usr/local/bin/simpleFoamExtracted
+          RUN cp -r /opt/openfoam10/tutorials/incompressible/simpleFoam/pitzDaily /case
+          WORKDIR /case
+          RUN sed -i '/functions/,/^}/d' system/controlDict
+          RUN bash -lc "source /opt/openfoam10/etc/bashrc && blockMesh && simpleFoamExtracted" 2>&1 | tee /tmp/serial.log
+          RUN grep -q "SIMPLE solution converged" /tmp/serial.log && echo "SERIAL: PASS" || (echo "SERIAL: FAIL" && exit 1)
+          EOF
+
+      - name: Test — pitzDaily parallel (4 cores)
+        run: |
+          docker build --no-cache -f - -t test-parallel . << 'EOF'
+          FROM simplefoam-vendored-build:latest AS binary
+          FROM openfoam10-base:latest AS runner
+          COPY --from=binary /build/build/simpleFoamExtracted /usr/local/bin/simpleFoamExtracted
+          RUN cp -r /opt/openfoam10/tutorials/incompressible/simpleFoam/pitzDaily /case
+          WORKDIR /case
+          RUN sed -i '/functions/,/^}/d' system/controlDict
+          RUN printf 'FoamFile\n{\n    version 2.0;\n    format ascii;\n    class dictionary;\n    location "system";\n    object decomposeParDict;\n}\nnumberOfSubdomains 4;\nmethod scotch;\n' > system/decomposeParDict
+          RUN bash -lc "source /opt/openfoam10/etc/bashrc && blockMesh && decomposePar && mpirun -n 4 --allow-run-as-root simpleFoamExtracted -parallel" 2>&1 | tee /tmp/parallel.log
+          RUN grep -q "SIMPLE solution converged" /tmp/parallel.log && echo "PARALLEL: PASS" || (echo "PARALLEL: FAIL" && exit 1)
+          EOF
+
+      - name: Test — airFoil2D
+        run: |
+          docker build --no-cache -f - -t test-airfoil . << 'EOF'
+          FROM simplefoam-vendored-build:latest AS binary
+          FROM openfoam10-base:latest AS runner
+          COPY --from=binary /build/build/simpleFoamExtracted /usr/local/bin/simpleFoamExtracted
+          RUN cp -r /opt/openfoam10/tutorials/incompressible/simpleFoam/airFoil2D /case
+          WORKDIR /case
+          RUN sed -i '/functions/,/^}/d' system/controlDict 2>/dev/null || true
+          RUN bash -lc "source /opt/openfoam10/etc/bashrc && simpleFoamExtracted" 2>&1 | tee /tmp/airfoil.log
+          RUN grep -q "SIMPLE solution converged" /tmp/airfoil.log && echo "AIRFOIL2D: PASS" || (echo "AIRFOIL2D: FAIL" && exit 1)
+          EOF
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Case | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| pitzDaily serial | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "| pitzDaily parallel 4×MPI | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "| airFoil2D | ✅ |" >> $GITHUB_STEP_SUMMARY
