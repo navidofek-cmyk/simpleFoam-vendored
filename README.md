@@ -1,39 +1,40 @@
 # simpleFoam_vendored
 
-Cíl: zkompilovat **simpleFoam bez instalace OpenFOAM** na hostu.  
-Přístup: vendorovat všechny OF zdrojáky které solver potřebuje a zkompilovat je přes CMake v čistém Ubuntu kontejneru.
+Build **simpleFoam without OpenFOAM installed on the host**.  
+Approach: vendor all required OF source files and compile them via CMake inside a clean Ubuntu container.
 
 ---
 
-## Stav projektu
+## Status
 
-| Krok | Stav | Poznámka |
-|------|------|---------|
-| Solver zdrojáky | ✅ | `solver/` — simpleFoam.C + .H fragmenty |
-| Base Docker image | ✅ | `Dockerfile.base` — OF-10 na Ubuntu 22.04 |
-| Sběr závislostí | ✅ | `collect_deps.sh` — 1271 .C souborů → `vendor/` |
-| CMakeLists.txt | ✅ | per-module OBJECT libs, whole-archive RunTime registrations |
-| Build (Dockerfile.build) | ✅ | čistý Ubuntu 22.04, bez OF na hostu |
-| Solver běží (pitzDaily) | 🔄 in progress | RunTime registrace a functionEntries se debuggují |
+| Step | Status | Notes |
+|------|--------|-------|
+| Solver sources | ✅ | `solver/` — simpleFoam.C + .H fragments |
+| Dependency collector | ✅ | `collect_deps.sh` — 1271 .C files → `vendor/` |
+| CMake build system | ✅ | per-module OBJECT libs, whole-archive RunTime registrations |
+| Standalone build | ✅ | clean Ubuntu 22.04, no OF on host, 42 MB binary |
+| Serial run | ✅ | pitzDaily: SIMPLE converged in 287 iterations |
+| Parallel MPI run | ✅ | pitzDaily 4 cores: SIMPLE converged in 293 iterations (2.7× speedup) |
+| airFoil2D | ✅ | Spalart-Allmaras: SIMPLE converged in 313 iterations |
 
 ---
 
-## Quickstart (na novém počítači)
+## Quickstart
 
-### 1. Naklonuj repo
+### 1. Clone
 
 ```bash
 git clone https://github.com/navidofek-cmyk/simpleFoam-vendored.git
 cd simpleFoam-vendored
 ```
 
-### 2. Postav base image (stáhne OF-10, ~2–5 min)
+### 2. Build base image (downloads OF-10, ~2–5 min)
 
 ```bash
 docker build -f Dockerfile.base -t openfoam10-base .
 ```
 
-### 3. Vygeneruj vendor/ (sbírá zdrojáky z OF, ~3 min)
+### 3. Collect vendor sources (~3 min)
 
 ```bash
 mkdir -p vendor
@@ -45,15 +46,15 @@ docker run --rm \
   "source /opt/openfoam10/etc/bashrc && bash /work/scripts/collect_deps.sh"
 ```
 
-### 4. Zkompiluj solver (čistý Ubuntu, bez OF, ~15 min)
+### 4. Build standalone solver (~15 min)
 
 ```bash
 docker build -f Dockerfile.build -t simplefoam-vendored-build .
 ```
 
-Výsledek: binárka `simpleFoamExtracted` v Docker image.
+Result: `simpleFoamExtracted` binary inside the Docker image.
 
-### 5. Extrahuj binárku
+### 5. Extract binary
 
 ```bash
 docker create --name tmp simplefoam-vendored-build
@@ -61,64 +62,88 @@ docker cp tmp:/build/build/simpleFoamExtracted ./simpleFoamExtracted
 docker rm tmp
 ```
 
+### 6. Run a test case (pitzDaily)
+
+```bash
+# Serial
+docker build -f Dockerfile.test -t simplefoam-test .
+# Output: SIMPLE solution converged in 287 iterations
+
+# Parallel (4 cores)
+docker build -f Dockerfile.test-parallel -t simplefoam-test-parallel .
+# Output: SIMPLE solution converged in 293 iterations, ClockTime ~2s
+```
+
 ---
 
-## Struktura
+## Repository structure
 
 ```
 simpleFoam_vendored/
-  solver/                  ← simpleFoam.C + .H fragmenty (v gitu)
+  solver/                  ← simpleFoam source (tracked in git)
   scripts/
-    collect_deps.sh        ← sbírá OF deps, generuje vendor/ + readSTLASCII.C
-    run_collect.sh         ← helper pro spuštění v Dockeru
-  vendor/                  ← generováno (není v gitu, ~48 MB)
-    src/                   ← OF zdrojáky (1271 .C + hlavičky)
-    solver/                ← kopie solveru
-    sources.cmake          ← manifest zdrojáků pro CMake
+    collect_deps.sh        ← collects OF deps, generates vendor/ + readSTLASCII.C
+    run_collect.sh         ← helper to run collect_deps inside Docker
+  vendor/                  ← generated (gitignored, ~48 MB)
+    src/                   ← OF source files (1271 .C + headers)
+    solver/                ← copy of solver sources
+    sources.cmake          ← CMake source manifest
     preamble.H             ← standalone build preamble
-  Dockerfile.base          ← OF-10 base image (pro sběr deps)
+  Dockerfile.base          ← OF-10 base image (for vendor collection)
   Dockerfile.build         ← standalone builder (ubuntu:22.04 + flex)
-  CMakeLists.txt           ← build systém
-  chat_history/            ← záznamy vývojových session
+  CMakeLists.txt           ← build system
+  chat_history/            ← development session transcripts
 ```
 
 ---
 
-## Architektura buildu
+## Build architecture
 
-### Proč ne wmake?
+### Why not wmake?
 
-OpenFOAM normálně kompiluje přes `wmake` a generuje ~20 sdílených knihoven (`.so`). Cíl tohoto projektu je **jeden standalone binárka** bez závislosti na nainstalovaném OF.
+OpenFOAM normally compiles via `wmake` producing ~20 shared libraries (`.so`). The goal here is **one self-contained binary** with no runtime dependency on an installed OpenFOAM.
 
-### CMake přístup
+### CMake module layout
 
-Každý OF modul je samostatná `OBJECT library` se správnými include paths. Moduly se spojí do statické `libopenfoam_vendor.a`:
+Each OF module is a separate OBJECT library with the correct per-module include scope. They are merged into a single static library:
 
 ```
-of_core (OpenFOAM/)     → of_fv (finiteVolume/)
-of_os   (OSspecific/)   → of_mt (meshTools/)
-of_lag  (lagrangian/)   → of_sam (sampling/)
-...                     → simpleFoamExtracted
+of_core  (OpenFOAM/)          ─┐
+of_os    (OSspecific/)         │
+of_pstream (Pstream/)          │
+of_ff    (fileFormats/)        ├─► libopenfoam_vendor.a ─► simpleFoamExtracted
+of_tri   (triSurface/)         │
+of_surf  (surfMesh/)           │
+of_fv    (finiteVolume/)       │
+of_mt    (meshTools/)          │
+of_lag   (lagrangian/basic/)   │
+of_sam   (sampling/)           │
+of_fvm   (fvModels/)           │
+of_fvc   (fvConstraints/)     ─┘
 ```
 
 ### RunTime Selection Tables
 
-OF používá C++ static initializers pro registraci typů (turbulentní modely, file operations, atd.). Statická knihovna tyto initializers vynechá pokud na ně nic neodkazuje. Řešení:
+OpenFOAM uses C++ static initializers to register types (turbulence models, file operations, function entries, etc.) in RunTime Selection Tables.  
+In a static library, the linker skips object files with no external references, silently dropping all registrations.
 
-- `--whole-archive` na `of_os` — zaregistruje `uncollated` file operation
-- `--whole-archive` na `openfoam_vendor` — zaregistruje všechny RunTime typy
+Solutions used:
+- `of_os` built as STATIC library + `--whole-archive` → registers `uncollated` file operation
+- `libopenfoam_vendor.a` linked with `--whole-archive` → registers all RunTime types
+- `--allow-multiple-definition` → silences identical template instantiations across TUs
+- `add_dependencies(simpleFoamExtracted openfoam_vendor of_os)` → correct parallel build ordering
 
-### Vyloučené soubory
+### Excluded sources
 
-Soubory referencující nevendorované deps jsou vyloučeny z kompilace. SimpleFoam je incompressible solver — thermophysical modely (`basicThermo`, `solidThermo`) a ensight output nejsou potřeba:
+Files referencing unvendored dependencies are excluded from compilation. simpleFoam is an incompressible steady-state solver — thermophysical models, ensight output writers and particle samplers are not needed:
 
-- `fvModels/`: thermophysical heat sources (buoyancy, heat transfer, solidification...)
-- `fvConstraints/`: temperature constraints
-- `sampling/`: ensight writers, distance surface (fvMeshSubset), particle samplers
+| Module | Excluded | Reason |
+|--------|----------|--------|
+| fvModels | heat sources, solidification, 6DoF | require `basicThermo`/`solidThermo` |
+| fvConstraints | temperature limiters | require `basicThermo` |
+| sampling | ensight writers, distance surfaces | require `ensightFile`, `fvMeshSubset` |
 
----
+### vendor/ is not in git
 
-## Proč vendor/ není v gitu
-
-Obsahuje tisíce zkopírovaných souborů z OpenFOAM zdrojáků (~48 MB, ~6 700 souborů).  
-Vždy se regeneruje čerstvě přes `collect_deps.sh`.
+Contains thousands of copied OpenFOAM source files (~48 MB, ~6 700 files).  
+Always regenerated fresh via `collect_deps.sh`.
