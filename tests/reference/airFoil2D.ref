@@ -1,0 +1,8 @@
+# Reference values for airFoil2D regression test
+# Generated from simpleFoam-vendored-build on 2026-04-30
+# Tolerance: iterations ±10%, ClockTime ±50%
+
+CONVERGED_ITERATIONS=313
+MAX_ITERATIONS_TOLERANCE=345
+MIN_ITERATIONS_TOLERANCE=281
+MAX_CLOCK_TIME_SECONDS=60

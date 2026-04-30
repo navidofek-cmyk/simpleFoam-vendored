@@ -1,0 +1,8 @@
+# Reference values for pitzDaily regression test
+# Generated from simpleFoam-vendored-build on 2026-04-30
+# Tolerance: iterations ±10%, ClockTime ±50%
+
+CONVERGED_ITERATIONS=287
+MAX_ITERATIONS_TOLERANCE=316
+MIN_ITERATIONS_TOLERANCE=258
+MAX_CLOCK_TIME_SECONDS=60
