@@ -156,6 +156,19 @@ Files referencing unvendored dependencies are excluded from compilation. simpleF
 | fvConstraints | temperature limiters | require `basicThermo` |
 | sampling | ensight writers, distance surfaces | require `ensightFile`, `fvMeshSubset` |
 
+---
+
+## License & attribution
+
+The vendored sources in `vendor/` are derived from **[OpenFOAM-10](https://github.com/OpenFOAM/OpenFOAM-10)**,
+developed and maintained by [OpenFOAM Foundation](https://openfoam.org),
+distributed under the **GNU General Public License v3.0**.
+
+This repository as a whole is therefore also licensed under **GPL v3**.  
+See [LICENSE](LICENSE) for details.
+
+---
+
 ### vendor/ is not in git
 
 Contains thousands of copied OpenFOAM source files (~48 MB, ~6 700 files).  
