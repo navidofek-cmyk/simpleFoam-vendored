@@ -6,6 +6,8 @@ Approach: vendor all required OF source files and compile them via CMake inside 
 **[Interactive dependency graph →](https://navidofek-cmyk.github.io/simpleFoam-vendored/)**  
 15 modules · 45 dependency edges · source file counts per module
 
+> **Enable GitHub Pages:** repo → Settings → Pages → Source: `Deploy from a branch` → Branch: `master` / folder: `/docs` → Save
+
 ---
 
 ## Status
