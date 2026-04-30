@@ -6,6 +6,7 @@ on:
     paths:
       - 'CMakeLists.txt'
       - 'Dockerfile.build'
+      - 'Dockerfile.base'
       - 'vendor/**'
       - 'solver/**'
       - 'tests/**'
@@ -14,140 +15,144 @@ on:
     branches: [master, main]
   workflow_dispatch:
 
+env:
+  REGISTRY: ghcr.io
+  SOLVER_IMAGE: ghcr.io/${{ github.repository_owner }}/simplefoam-vendored-build
+  BASE_IMAGE:   ghcr.io/${{ github.repository_owner }}/openfoam10-base
+
 jobs:
-  build-and-test:
+  # ── Job 1: build images and push to ghcr.io ─────────────────────────────────
+  build:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      packages: write
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v3
 
-      - name: Cache Docker layers
-        uses: actions/cache@v4
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
         with:
-          path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-buildx-${{ hashFiles('Dockerfile.build', 'CMakeLists.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-buildx-
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build solver image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: Dockerfile.build
-          tags: simplefoam-vendored-build:latest
-          load: true
-          cache-from: type=local,src=/tmp/.buildx-cache
-          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
-
-      - name: Move cache
-        run: |
-          rm -rf /tmp/.buildx-cache
-          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
-
-      - name: Build OF base image
+      - name: Build & push OF base image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: Dockerfile.base
-          tags: openfoam10-base:latest
-          load: true
+          push: true
+          tags: ${{ env.BASE_IMAGE }}:latest
+          cache-from: type=registry,ref=${{ env.BASE_IMAGE }}:cache
+          cache-to:   type=registry,ref=${{ env.BASE_IMAGE }}:cache,mode=max
 
-      # ── pitzDaily serial ─────────────────────────────────────────────────────
+      - name: Build & push solver image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.build
+          push: true
+          tags: ${{ env.SOLVER_IMAGE }}:latest,${{ env.SOLVER_IMAGE }}:${{ github.sha }}
+          cache-from: type=registry,ref=${{ env.SOLVER_IMAGE }}:cache
+          cache-to:   type=registry,ref=${{ env.SOLVER_IMAGE }}:cache,mode=max
+
+  # ── Job 2: run tests using pre-built images ──────────────────────────────────
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: build
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull images
+        run: |
+          docker pull ${{ env.SOLVER_IMAGE }}:latest
+          docker pull ${{ env.BASE_IMAGE }}:latest
+          docker tag ${{ env.SOLVER_IMAGE }}:latest simplefoam-vendored-build:latest
+          docker tag ${{ env.BASE_IMAGE }}:latest   openfoam10-base:latest
+
+      - name: Extract solver binary
+        run: |
+          docker create --name tmp simplefoam-vendored-build:latest
+          docker cp tmp:/build/build/simpleFoamExtracted ./simpleFoamExtracted
+          docker rm tmp
+          ls -lh simpleFoamExtracted
+
       - name: Test — pitzDaily serial (smoke + regression + performance)
         run: |
-          docker run --rm \
-            -v "$(pwd)/tests/reference:/ref:ro" \
-            --entrypoint bash \
-            openfoam10-base:latest -lc '
-            # install solver binary
-            docker_binary=$(docker create simplefoam-vendored-build:latest)
-          ' 2>/dev/null || true
-
           docker build --no-cache -f - -t test-serial . << 'DOCKERFILE'
-          FROM simplefoam-vendored-build:latest AS binary
           FROM openfoam10-base:latest AS runner
-          COPY --from=binary /build/build/simpleFoamExtracted /usr/local/bin/simpleFoamExtracted
+          COPY simpleFoamExtracted /usr/local/bin/simpleFoamExtracted
           COPY tests/reference/pitzDaily.ref /ref/pitzDaily.ref
           RUN cp -r /opt/openfoam10/tutorials/incompressible/simpleFoam/pitzDaily /case
           WORKDIR /case
           RUN sed -i '/functions/,/^}/d' system/controlDict
           RUN bash -lc "source /opt/openfoam10/etc/bashrc && blockMesh && simpleFoamExtracted" 2>&1 | tee /log.txt
 
-          RUN set -e; source /ref/pitzDaily.ref; \
-              echo "=== SMOKE TEST ===" && \
-              grep -q "SIMPLE solution converged" /log.txt && echo "PASS: solver converged" || (echo "FAIL: did not converge" && exit 1)
+          RUN echo "=== SMOKE ===" && \
+              grep -q "SIMPLE solution converged" /log.txt && echo "PASS" || (echo "FAIL" && exit 1)
 
           RUN set -e; source /ref/pitzDaily.ref; \
-              echo "=== REGRESSION TEST ===" && \
               ITERS=$(grep "SIMPLE solution converged in" /log.txt | grep -o '[0-9]*' | tail -1); \
-              echo "Iterations: $ITERS (ref: ${CONVERGED_ITERATIONS}, allowed: ${MIN_ITERATIONS_TOLERANCE}–${MAX_ITERATIONS_TOLERANCE})"; \
-              [ "$ITERS" -ge "$MIN_ITERATIONS_TOLERANCE" ] && [ "$ITERS" -le "$MAX_ITERATIONS_TOLERANCE" ] && \
-              echo "PASS: iterations within ±10% of reference" || (echo "FAIL: iteration count out of range" && exit 1)
+              echo "=== REGRESSION === iterations: $ITERS (ref ${CONVERGED_ITERATIONS}, range ${MIN_ITERATIONS_TOLERANCE}–${MAX_ITERATIONS_TOLERANCE})"; \
+              [ "$ITERS" -ge "$MIN_ITERATIONS_TOLERANCE" ] && [ "$ITERS" -le "$MAX_ITERATIONS_TOLERANCE" ] && echo "PASS" || (echo "FAIL" && exit 1)
 
           RUN set -e; source /ref/pitzDaily.ref; \
-              echo "=== PERFORMANCE TEST ===" && \
               CLOCK=$(grep "ClockTime" /log.txt | tail -1 | grep -o 'ClockTime = [0-9]*' | grep -o '[0-9]*'); \
-              echo "ClockTime: ${CLOCK}s (limit: ${MAX_CLOCK_TIME_SECONDS}s)"; \
-              [ "$CLOCK" -le "$MAX_CLOCK_TIME_SECONDS" ] && \
-              echo "PASS: within time limit" || (echo "FAIL: exceeded time limit" && exit 1)
+              echo "=== PERFORMANCE === ${CLOCK}s (limit ${MAX_CLOCK_TIME_SECONDS}s)"; \
+              [ "$CLOCK" -le "$MAX_CLOCK_TIME_SECONDS" ] && echo "PASS" || (echo "FAIL" && exit 1)
           DOCKERFILE
-          echo "SERIAL_STATUS=pass" >> $GITHUB_ENV
 
-      # ── pitzDaily parallel ───────────────────────────────────────────────────
       - name: Test — pitzDaily parallel 4×MPI (smoke + performance)
         run: |
           docker build --no-cache -f - -t test-parallel . << 'DOCKERFILE'
-          FROM simplefoam-vendored-build:latest AS binary
           FROM openfoam10-base:latest AS runner
-          COPY --from=binary /build/build/simpleFoamExtracted /usr/local/bin/simpleFoamExtracted
+          COPY simpleFoamExtracted /usr/local/bin/simpleFoamExtracted
           RUN cp -r /opt/openfoam10/tutorials/incompressible/simpleFoam/pitzDaily /case
           WORKDIR /case
           RUN sed -i '/functions/,/^}/d' system/controlDict
           RUN printf 'FoamFile\n{\n    version 2.0;\n    format ascii;\n    class dictionary;\n    location "system";\n    object decomposeParDict;\n}\nnumberOfSubdomains 4;\nmethod scotch;\n' > system/decomposeParDict
           RUN bash -lc "source /opt/openfoam10/etc/bashrc && blockMesh && decomposePar && \
               mpirun -n 4 --allow-run-as-root simpleFoamExtracted -parallel" 2>&1 | tee /log.txt
-
-          RUN echo "=== SMOKE TEST ===" && \
-              grep -q "SIMPLE solution converged" /log.txt && echo "PASS: parallel converged" || (echo "FAIL" && exit 1)
-
-          RUN echo "=== PERFORMANCE TEST ===" && \
-              CLOCK=$(grep "ClockTime" /log.txt | tail -1 | grep -o 'ClockTime = [0-9]*' | grep -o '[0-9]*'); \
-              echo "Parallel ClockTime: ${CLOCK}s (serial ref: 7s, expected speedup > 2×)"; \
-              [ "$CLOCK" -le "15" ] && echo "PASS: parallel faster than 15s" || (echo "FAIL: too slow" && exit 1)
+          RUN echo "=== SMOKE ===" && grep -q "SIMPLE solution converged" /log.txt && echo "PASS" || (echo "FAIL" && exit 1)
+          RUN CLOCK=$(grep "ClockTime" /log.txt | tail -1 | grep -o 'ClockTime = [0-9]*' | grep -o '[0-9]*'); \
+              echo "=== PERFORMANCE === parallel ${CLOCK}s (limit 15s)"; \
+              [ "$CLOCK" -le "15" ] && echo "PASS" || (echo "FAIL" && exit 1)
           DOCKERFILE
-          echo "PARALLEL_STATUS=pass" >> $GITHUB_ENV
 
-      # ── airFoil2D ────────────────────────────────────────────────────────────
       - name: Test — airFoil2D (smoke + regression)
         run: |
           docker build --no-cache -f - -t test-airfoil . << 'DOCKERFILE'
-          FROM simplefoam-vendored-build:latest AS binary
           FROM openfoam10-base:latest AS runner
-          COPY --from=binary /build/build/simpleFoamExtracted /usr/local/bin/simpleFoamExtracted
+          COPY simpleFoamExtracted /usr/local/bin/simpleFoamExtracted
           COPY tests/reference/airFoil2D.ref /ref/airFoil2D.ref
           RUN cp -r /opt/openfoam10/tutorials/incompressible/simpleFoam/airFoil2D /case
           WORKDIR /case
           RUN sed -i '/functions/,/^}/d' system/controlDict 2>/dev/null || true
           RUN bash -lc "source /opt/openfoam10/etc/bashrc && simpleFoamExtracted" 2>&1 | tee /log.txt
-
-          RUN echo "=== SMOKE TEST ===" && \
-              grep -q "SIMPLE solution converged" /log.txt && echo "PASS" || (echo "FAIL" && exit 1)
-
+          RUN echo "=== SMOKE ===" && grep -q "SIMPLE solution converged" /log.txt && echo "PASS" || (echo "FAIL" && exit 1)
           RUN set -e; source /ref/airFoil2D.ref; \
-              echo "=== REGRESSION TEST ===" && \
               ITERS=$(grep "SIMPLE solution converged in" /log.txt | grep -o '[0-9]*' | tail -1); \
-              echo "Iterations: $ITERS (ref: ${CONVERGED_ITERATIONS}, allowed: ${MIN_ITERATIONS_TOLERANCE}–${MAX_ITERATIONS_TOLERANCE})"; \
-              [ "$ITERS" -ge "$MIN_ITERATIONS_TOLERANCE" ] && [ "$ITERS" -le "$MAX_ITERATIONS_TOLERANCE" ] && \
-              echo "PASS" || (echo "FAIL: iteration count out of range" && exit 1)
+              echo "=== REGRESSION === iterations: $ITERS (ref ${CONVERGED_ITERATIONS}, range ${MIN_ITERATIONS_TOLERANCE}–${MAX_ITERATIONS_TOLERANCE})"; \
+              [ "$ITERS" -ge "$MIN_ITERATIONS_TOLERANCE" ] && [ "$ITERS" -le "$MAX_ITERATIONS_TOLERANCE" ] && echo "PASS" || (echo "FAIL" && exit 1)
           DOCKERFILE
-          echo "AIRFOIL_STATUS=pass" >> $GITHUB_ENV
 
-      # ── summary ──────────────────────────────────────────────────────────────
       - name: Summary
         if: always()
         run: |
@@ -156,5 +161,7 @@ jobs:
           echo "| Case | Smoke | Regression | Performance |" >> $GITHUB_STEP_SUMMARY
           echo "|------|-------|------------|-------------|" >> $GITHUB_STEP_SUMMARY
           echo "| pitzDaily serial | ✅ | ✅ iter ±10% | ✅ <60s |" >> $GITHUB_STEP_SUMMARY
-          echo "| pitzDaily 4×MPI | ✅ | — | ✅ <15s |" >> $GITHUB_STEP_SUMMARY
-          echo "| airFoil2D | ✅ | ✅ iter ±10% | — |" >> $GITHUB_STEP_SUMMARY
+          echo "| pitzDaily 4×MPI  | ✅ | — | ✅ <15s |" >> $GITHUB_STEP_SUMMARY
+          echo "| airFoil2D        | ✅ | ✅ iter ±10% | — |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Solver image: \`${{ env.SOLVER_IMAGE }}:${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
