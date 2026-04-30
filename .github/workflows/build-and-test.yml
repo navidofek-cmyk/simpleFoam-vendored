@@ -153,6 +153,50 @@ jobs:
               [ "$ITERS" -ge "$MIN_ITERATIONS_TOLERANCE" ] && [ "$ITERS" -le "$MAX_ITERATIONS_TOLERANCE" ] && echo "PASS" || (echo "FAIL" && exit 1)
           DOCKERFILE
 
+      # ── VTK export for ParaView ──────────────────────────────────────────────
+      - name: Export pitzDaily results to VTK
+        run: |
+          mkdir -p vtk-results/pitzDaily vtk-results/airFoil2D
+
+          # pitzDaily: run solver + foamToVTK
+          docker build --no-cache -f - -t export-pitzDaily . << 'DOCKERFILE'
+          FROM openfoam10-base:latest AS runner
+          COPY simpleFoamExtracted /usr/local/bin/simpleFoamExtracted
+          RUN cp -r /opt/openfoam10/tutorials/incompressible/simpleFoam/pitzDaily /case
+          WORKDIR /case
+          RUN sed -i '/functions/,/^}/d' system/controlDict
+          RUN bash -lc "source /opt/openfoam10/etc/bashrc && blockMesh && simpleFoamExtracted && foamToVTK"
+          DOCKERFILE
+
+          docker create --name vtk-pd export-pitzDaily
+          docker cp vtk-pd:/case/VTK vtk-results/pitzDaily/
+          docker rm vtk-pd
+
+          # airFoil2D: run solver + foamToVTK
+          docker build --no-cache -f - -t export-airfoil . << 'DOCKERFILE'
+          FROM openfoam10-base:latest AS runner
+          COPY simpleFoamExtracted /usr/local/bin/simpleFoamExtracted
+          RUN cp -r /opt/openfoam10/tutorials/incompressible/simpleFoam/airFoil2D /case
+          WORKDIR /case
+          RUN sed -i '/functions/,/^}/d' system/controlDict 2>/dev/null || true
+          RUN bash -lc "source /opt/openfoam10/etc/bashrc && simpleFoamExtracted && foamToVTK"
+          DOCKERFILE
+
+          docker create --name vtk-af export-airfoil
+          docker cp vtk-af:/case/VTK vtk-results/airFoil2D/
+          docker rm vtk-af
+
+          echo "VTK files:"
+          find vtk-results -name "*.vtk" | head -20
+          du -sh vtk-results/
+
+      - name: Upload VTK results as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vtk-results-${{ github.sha }}
+          path: vtk-results/
+          retention-days: 14
+
       - name: Summary
         if: always()
         run: |
@@ -163,5 +207,8 @@ jobs:
           echo "| pitzDaily serial | ✅ | ✅ iter ±10% | ✅ <60s |" >> $GITHUB_STEP_SUMMARY
           echo "| pitzDaily 4×MPI  | ✅ | — | ✅ <15s |" >> $GITHUB_STEP_SUMMARY
           echo "| airFoil2D        | ✅ | ✅ iter ±10% | — |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**VTK artifacts** available for download (14 days retention):" >> $GITHUB_STEP_SUMMARY
+          echo "Fields exported: U (velocity), p (pressure), k, epsilon/nuTilda, nut" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Solver image: \`${{ env.SOLVER_IMAGE }}:${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
