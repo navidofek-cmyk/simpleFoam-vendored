@@ -69,7 +69,13 @@ filter_sources(SRCS_OS       "/OSspecific/")
 list(FILTER SRCS_OS EXCLUDE REGEX "dummyPrintStack\\.C$")
 filter_sources(SRCS_PS       "/Pstream/")
 filter_sources(SRCS_FV       "/finiteVolume/")
+# fvConstraint(s).C and fvModel(s).C live under finiteVolume/cfdTools/general/ but also match
+# the /fvConstraints/ and /fvModels/ filters — exclude from SRCS_FV to avoid double compilation
+list(FILTER SRCS_FV EXCLUDE REGEX "/finiteVolume/cfdTools/general/fvConstraints/")
+list(FILTER SRCS_FV EXCLUDE REGEX "/finiteVolume/cfdTools/general/fvModels/")
 filter_sources(SRCS_MT       "/meshTools/")
+# matchPoints.C is in OpenFOAM/meshes/meshTools/ — already in SRCS_OF, exclude from SRCS_MT
+list(FILTER SRCS_MT EXCLUDE REGEX "/OpenFOAM/meshes/meshTools/")
 filter_sources(SRCS_PP       "/physicalProperties/")
 filter_sources(SRCS_MTM      "/MomentumTransportModels/momentumTransportModels/")
 filter_sources(SRCS_MTI      "/MomentumTransportModels/incompressible/")
@@ -85,7 +91,7 @@ list(FILTER SRCS_LAG EXCLUDE REGEX "(Cloud\\.C|CloudIO\\.C|demandDrivenEntry\\.C
 filter_sources(SRCS_FVM      "/fvModels/")
 # Exclude fvModels that reference thermophysical models (not vendored)
 # All fvModels that reference basicThermo/solidThermo/thermophysicalTransportModel (not vendored)
-list(FILTER SRCS_FVM EXCLUDE REGEX "(buoyancyEnergy|massSource|solidEquilibriumEnergySource|volumeFractionSource|effectivenessHeatExchangerSource|heatSource|heatTransfer|solidificationMeltingSource|interRegionHeatTransfer|fixedTemperatureConstraint|limitTemperature)\\.C$")
+list(FILTER SRCS_FVM EXCLUDE REGEX "(buoyancyEnergy|massSource|solidEquilibriumEnergySource|volumeFractionSource|effectivenessHeatExchangerSource|heatSource|heatTransfer|solidificationMeltingSource|interRegionHeatTransfer|fixedTemperatureConstraint|limitTemperature|sixDoFAccelerationSource)\\.C$")
 list(FILTER SRCS_FVM EXCLUDE REGEX "heatTransfer.*variable\\.C$")
 filter_sources(SRCS_FVC      "/fvConstraints/")
 list(FILTER SRCS_FVC EXCLUDE REGEX "(fixedTemperatureConstraint|limitTemperature)\\.C$")
@@ -158,13 +164,18 @@ target_include_directories(simpleFoamExtracted PRIVATE
     "${SOLVER_DIR}"
 )
 target_link_libraries(simpleFoamExtracted PRIVATE
-    # --whole-archive ensures all RunTime registrations (functionEntries, turbulence models, etc.)
-    # are pulled in. Problematic files referencing unvendored deps are excluded from SRCS_SAM/FVM above.
+    # --allow-multiple-definition: handles template instantiation conflicts where the same
+    # VectorSpace<> static members are instantiated in multiple TUs (identical definitions).
+    # --whole-archive: ensures all RunTime registrations (turbulence models, function entries etc.)
+    -Wl,--allow-multiple-definition
     -Wl,--whole-archive
     $<TARGET_FILE:of_os>
-    openfoam_vendor
+    $<TARGET_FILE:openfoam_vendor>
     -Wl,--no-whole-archive
     MPI::MPI_CXX ZLIB::ZLIB dl pthread
 )
+
+# Explicit dependency so parallel build waits for openfoam_vendor before linking
+add_dependencies(simpleFoamExtracted openfoam_vendor of_os)
 
 install(TARGETS simpleFoamExtracted DESTINATION bin)
