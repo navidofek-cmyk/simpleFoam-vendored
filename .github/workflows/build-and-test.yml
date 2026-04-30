@@ -127,13 +127,13 @@ jobs:
           RUN cp -r /opt/openfoam10/tutorials/incompressible/simpleFoam/pitzDaily /case
           WORKDIR /case
           RUN sed -i '/functions/,/^}/d' system/controlDict
-          RUN printf 'FoamFile\n{\n    version 2.0;\n    format ascii;\n    class dictionary;\n    location "system";\n    object decomposeParDict;\n}\nnumberOfSubdomains 4;\nmethod scotch;\n' > system/decomposeParDict
+          RUN printf 'FoamFile\n{\n    version 2.0;\n    format ascii;\n    class dictionary;\n    location "system";\n    object decomposeParDict;\n}\nnumberOfSubdomains 2;\nmethod scotch;\n' > system/decomposeParDict
           RUN bash -lc "source /opt/openfoam10/etc/bashrc && blockMesh && decomposePar && \
-              mpirun -n 4 --allow-run-as-root simpleFoamExtracted -parallel" 2>&1 | tee /log.txt
+              mpirun -n 2 --allow-run-as-root simpleFoamExtracted -parallel" 2>&1 | tee /log.txt
           RUN echo "=== SMOKE ===" && grep -q "SIMPLE solution converged" /log.txt && echo "PASS" || (echo "FAIL" && exit 1)
           RUN CLOCK=$(grep "ClockTime" /log.txt | tail -1 | grep -o 'ClockTime = [0-9]*' | grep -o '[0-9]*'); \
-              echo "=== PERFORMANCE === parallel ${CLOCK}s (limit 15s)"; \
-              [ "$CLOCK" -le "15" ] && echo "PASS" || (echo "FAIL" && exit 1)
+              echo "=== PERFORMANCE === parallel ${CLOCK}s (limit 30s)"; \
+              [ "$CLOCK" -le "30" ] && echo "PASS" || (echo "FAIL" && exit 1)
           DOCKERFILE
 
       - name: Test — airFoil2D (smoke + regression)
@@ -205,7 +205,7 @@ jobs:
           echo "| Case | Smoke | Regression | Performance |" >> $GITHUB_STEP_SUMMARY
           echo "|------|-------|------------|-------------|" >> $GITHUB_STEP_SUMMARY
           echo "| pitzDaily serial | ✅ | ✅ iter ±10% | ✅ <60s |" >> $GITHUB_STEP_SUMMARY
-          echo "| pitzDaily 4×MPI  | ✅ | — | ✅ <15s |" >> $GITHUB_STEP_SUMMARY
+          echo "| pitzDaily 2×MPI (CI: 2 vCPU) | ✅ | — | ✅ <30s |" >> $GITHUB_STEP_SUMMARY
           echo "| airFoil2D        | ✅ | ✅ iter ±10% | — |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**VTK artifacts** available for download (14 days retention):" >> $GITHUB_STEP_SUMMARY
