@@ -159,7 +159,7 @@ jobs:
           mkdir -p vtk-results/pitzDaily vtk-results/airFoil2D
 
           # pitzDaily: run solver + foamToVTK
-          docker build --no-cache -f - -t export-pitzDaily . << 'DOCKERFILE'
+          docker build --no-cache -f - -t export-pitzdaily . << 'DOCKERFILE'
           FROM openfoam10-base:latest AS runner
           COPY simpleFoamExtracted /usr/local/bin/simpleFoamExtracted
           RUN cp -r /opt/openfoam10/tutorials/incompressible/simpleFoam/pitzDaily /case
@@ -168,7 +168,7 @@ jobs:
           RUN bash -lc "source /opt/openfoam10/etc/bashrc && blockMesh && simpleFoamExtracted && foamToVTK"
           DOCKERFILE
 
-          docker create --name vtk-pd export-pitzDaily
+          docker create --name vtk-pd export-pitzdaily
           docker cp vtk-pd:/case/VTK vtk-results/pitzDaily/
           docker rm vtk-pd
 
