@@ -3,6 +3,9 @@
 Build **simpleFoam without OpenFOAM installed on the host**.  
 Approach: vendor all required OF source files and compile them via CMake inside a clean Ubuntu container.
 
+**[Interactive dependency graph →](https://navidofek-cmyk.github.io/simpleFoam-vendored/)**  
+15 modules · 45 dependency edges · source file counts per module
+
 ---
 
 ## Status
@@ -102,6 +105,16 @@ simpleFoam_vendored/
 ### Why not wmake?
 
 OpenFOAM normally compiles via `wmake` producing ~20 shared libraries (`.so`). The goal here is **one self-contained binary** with no runtime dependency on an installed OpenFOAM.
+
+### Dependency graph
+
+An interactive force-directed graph of all modules and their dependencies is available at:  
+**https://navidofek-cmyk.github.io/simpleFoam-vendored/**
+
+To regenerate locally:
+```bash
+python3 scripts/gen_dep_graph.py   # writes docs/index.html
+```
 
 ### CMake module layout
 
